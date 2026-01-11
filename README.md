@@ -22,6 +22,10 @@ A bug can also be reported by opening a new issue thread in the issues tab of th
 
 To install the plugin, simply download or clone the latest stable version of this project and copy the plugin from this project's addon folder into your own. Make sure to turn on the plugin in godot by going into the project settings and under "plugins" checking the checkbox next to the plugin's name.
 
+## Known Issues
+
+Currently none...
+
 ## Credits
 
 Developed by [Yūgen](https://www.youtube.com/@yugen_seishin) and originally forked from [Jackachulian](https://github.com/jackachulian/jackachulian) on github.
