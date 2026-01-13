@@ -17,7 +17,7 @@ group_uniforms;
 group_uniforms Blending;
 // true = Original behavior (single material, hard edges, works with "Perfect Square Tiles")
 // false = Smooth blending between materials (works with "Mixed Triangles")
-uniform bool use_hard_square_edges = true;
+uniform bool use_hard_square_edges = false;
 uniform float blend_sharpness : hint_range(0.0, 5.0, 0.1) = 2.5;
 uniform float blend_noise_scale : hint_range(0.0, 50.0, 1.0) = 10.0;
 uniform float blend_noise_strength : hint_range(0.0, 1.0, 0.05) = 0.0;
