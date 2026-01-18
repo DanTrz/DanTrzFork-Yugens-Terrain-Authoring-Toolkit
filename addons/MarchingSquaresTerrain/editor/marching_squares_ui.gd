@@ -81,6 +81,7 @@ func set_visible(is_visible: bool) -> void:
 
 func _on_tool_changed(tool_index: int) -> void:
 	active_tool = tool_index
+
 	if tool_index == 5: # Vertex Painting
 		tool_attributes.attribute_list = MarchingSquaresToolAttributesList.new()
 		texture_settings.show()
@@ -93,6 +94,7 @@ func _on_tool_changed(tool_index: int) -> void:
 		plugin.BRUSH_RADIUS_MATERIAL.set_shader_parameter("falloff_visible", false)
 	plugin.active_tool = tool_index
 	plugin.mode = tool_index
+	plugin.vertex_color_idx = 0 #Set to the first material on start # Woring around a UI sync bug. #TODO: This is temp workaround - Possible refactor.
 	tool_attributes.show_tool_attributes(active_tool)
 
 
