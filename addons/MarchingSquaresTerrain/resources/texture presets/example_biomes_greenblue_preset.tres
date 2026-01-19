@@ -31,7 +31,7 @@ wall_colors = Array[Color]([Color(0.46945179, 0.7010036, 0.2856275, 1), Color(0.
 
 [resource]
 script = ExtResource("15_0hfrj")
-preset_name = "BiomesGreenBlue"
+preset_name = "Biomes - GreenBlue"
 new_tex_names = SubResource("Resource_4dj7t")
 new_textures = SubResource("Resource_s6lbc")
 quick_paints = Array[ExtResource("15_v8enj")]([ExtResource("17_3q4hf"), ExtResource("18_untgd")])

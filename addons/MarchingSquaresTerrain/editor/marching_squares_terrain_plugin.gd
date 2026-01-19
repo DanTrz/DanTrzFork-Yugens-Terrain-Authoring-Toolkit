@@ -84,9 +84,9 @@ var vertex_color_idx : int = 0:
 var vertex_color_0 : Color = Color(1.0, 0.0, 0.0, 0.0)
 var vertex_color_1 : Color = Color(1.0, 0.0, 0.0, 0.0)
 
-# A dictionary with keys for each tile that is currently being drawn to with the brush. 
-# in brush mode, value is the height that preview was drawn to, aka height BEFORE it is set
-# in ground texture mode, value is the color of the point BEFORE the draw
+# A dictionary with keys for each tile that is currently being drawn to with the brush 
+# In brush mode, the value is the height that preview was drawn to, aka the height BEFORE it is set
+# In ground texture mode, the value is the color of the point BEFORE the draw
 var current_draw_pattern : Dictionary
 
 var terrain_hovered : bool
@@ -94,19 +94,19 @@ var terrain_hovered : bool
 # True if the mouse is currently held down to draw
 var is_drawing : bool
 
-# when brush draws, if the gizmo sees draw height is not set, it will set the draw height
+# When the brush draws, if the gizmo sees the draw height is not set, it will set the draw height
 var draw_height_set : bool
 
-# Height the current pattern is being drawn at for the brush tool.
+# Height of the current pattern that is being drawn at for the brush tool
 var draw_height : float
 
-# Is set to true when player clicks on a tile that is part of the current draw pattern, will enter heightdrag setting mode
+# Is set to true when the user clicks on a tile that is part of the current draw pattern, will enter heightdrag setting mode
 var is_setting : bool
 
 var is_making_bridge : bool
 var bridge_start_pos : Vector3
 
-# The point where the height drag started.
+# The point where the height drag started
 var base_position : Vector3
 
 const BRUSH_VISUAL : Mesh = preload("res://addons/MarchingSquaresTerrain/resources/materials/brush_visual.tres")
@@ -118,7 +118,6 @@ var BRUSH_RADIUS_MATERIAL : ShaderMaterial = preload("res://addons/MarchingSquar
 func _enter_tree():
 	instance = self
 	call_deferred("_deferred_enter_tree")
-
 	
 	print_rich("Welcome to [color=MEDIUM_ORCHID][url=https://www.youtube.com/@yugen_seishin]Yūgen[/url][/color]'s [wave]Marching Squares Terrain Authoring Toolkit[/wave]\nThis plugin is under MIT license")
 
@@ -207,7 +206,7 @@ func _edit(object: Object) -> void:
 		if ui:
 			ui.set_visible(true)
 			current_terrain_node = object
-
+			
 			# Sync plugin's preset from the selected terrain's saved preset
 			# This ensures each terrain keeps its own preset on selection/reload
 			_syncing_from_terrain = true
@@ -229,11 +228,10 @@ func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
 	
 	var selected = EditorInterface.get_selection().get_selected_nodes()
-	# only proceed if exactly 1 terrain system is selected
+	# Only proceed if exactly 1 terrain system is selected
 	if not selected or len(selected) > 1:
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
 	
-	# Handle clicks
 	if event is InputEventMouseButton or event is InputEventMouseMotion:
 		return handle_mouse(camera, event)
 	
@@ -256,7 +254,6 @@ func handle_mouse(camera: Camera3D, event: InputEvent) -> int:
 	terrain_hovered = false
 	var terrain: MarchingSquaresTerrain = EditorInterface.get_selection().get_selected_nodes()[0]
 	
-	# Get the mouse position in the viewport
 	var editor_viewport = EditorInterface.get_editor_viewport_3d()
 	var mouse_pos = editor_viewport.get_mouse_position()	
 	
@@ -277,7 +274,7 @@ func handle_mouse(camera: Camera3D, event: InputEvent) -> int:
 			if set_position:
 				brush_position = set_position
 		
-		# if there is any pattern and flatten is enabled, draw along that height plane instead of terrain intersection
+		# If there is any pattern and flatten is enabled, draw along that height plane instead of the terrain intersection
 		elif not current_draw_pattern.is_empty() and flatten:
 			var chunk_plane = Plane(Vector3.UP, Vector3(0, draw_height, 0))
 			draw_position = chunk_plane.intersects_ray(ray_origin, ray_dir)
@@ -297,7 +294,7 @@ func handle_mouse(camera: Camera3D, event: InputEvent) -> int:
 				draw_position = terrain.to_local(result.position)
 				draw_area_hovered = true
 		
-		# ALT to clear the current draw pattern. don't clear while setting
+		# ALT to clear the current draw pattern. Don't clear while setting
 		if Input.is_key_pressed(KEY_ALT) and not is_setting:
 			current_draw_pattern.clear()
 		
@@ -352,7 +349,7 @@ func handle_mouse(camera: Camera3D, event: InputEvent) -> int:
 						current_draw_pattern.clear()
 			gizmo_plugin.terrain_gizmo._redraw()
 			return EditorPlugin.AFTER_GUI_INPUT_STOP
-			
+		
 		# Adjust brush size
 		if event is InputEventMouseButton and Input.is_key_pressed(KEY_SHIFT):
 			var factor: float = event.factor if event.factor else 1
@@ -368,7 +365,7 @@ func handle_mouse(camera: Camera3D, event: InputEvent) -> int:
 					brush_size = 1
 				gizmo_plugin.terrain_gizmo._redraw()
 				return EditorPlugin.AFTER_GUI_INPUT_STOP
-				
+		
 		if draw_area_hovered and event is InputEventMouseMotion:
 			brush_position = draw_position
 			if is_drawing and (mode == TerrainToolMode.SMOOTH or mode == TerrainToolMode.VERTEX_PAINTING or mode == TerrainToolMode.GRASS_MASK):
@@ -377,8 +374,8 @@ func handle_mouse(camera: Camera3D, event: InputEvent) -> int:
 		
 		gizmo_plugin.terrain_gizmo._redraw()
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
-		
-	# Check for hovering over/ckicking new chunk
+	
+	# Check for hovering over/clicking a new chunk
 	var chunk_plane = Plane(Vector3.UP, Vector3.ZERO)
 	var intersection = chunk_plane.intersects_ray(ray_origin, ray_dir)
 	
@@ -390,7 +387,7 @@ func handle_mouse(camera: Camera3D, event: InputEvent) -> int:
 		
 		current_hovered_chunk = chunk_coords
 		is_chunk_plane_hovered = true
-	
+		
 		# On click, add or remove chunk if in chunk_management mode
 		if mode == TerrainToolMode.CHUNK_MANAGEMENT and event is InputEventMouseButton and event.is_pressed() and event.button_index == MouseButton.MOUSE_BUTTON_LEFT:
 			# Remove chunk
@@ -405,7 +402,7 @@ func handle_mouse(camera: Camera3D, event: InputEvent) -> int:
 			# Add new chunk
 			elif not chunk:
 				# Can add a new chunk here if there is a neighbouring non-empty chunk
-				# also add if there are no chunks at all in the current terrain system
+				# Also add if there are no chunks at all in the current terrain system
 				var can_add_empty: bool = terrain.chunks.is_empty() or terrain.has_chunk(chunk_x-1, chunk_z) or terrain.has_chunk(chunk_x+1, chunk_z) or terrain.has_chunk(chunk_x, chunk_z-1) or terrain.has_chunk(chunk_x, chunk_z+1)
 				if can_add_empty:
 					get_undo_redo().create_action("add chunk")
@@ -417,11 +414,11 @@ func handle_mouse(camera: Camera3D, event: InputEvent) -> int:
 		gizmo_plugin.terrain_gizmo._redraw()
 	else:
 		is_chunk_plane_hovered = false
-		
+	
 	# Consume clicks but allow other click / mouse motion types to reach the gui, for camera movement, etc	
 	if event is InputEventMouseButton and event.is_pressed() and event.button_index == MouseButton.MOUSE_BUTTON_LEFT:
 		return EditorPlugin.AFTER_GUI_INPUT_STOP
-		
+	
 	return EditorPlugin.AFTER_GUI_INPUT_PASS
 
 
@@ -611,7 +608,7 @@ func draw_pattern(terrain: MarchingSquaresTerrain):
 			"color_0": restore_pattern,
 			"color_1": restore_pattern_cc
 		}
-
+		
 		undo_redo.create_action("terrain vertex paint")
 		undo_redo.add_do_method(self, "apply_composite_pattern_action", terrain, do_patterns)
 		undo_redo.add_undo_method(self, "apply_composite_pattern_action", terrain, undo_patterns)
@@ -625,16 +622,16 @@ func draw_pattern(terrain: MarchingSquaresTerrain):
 		# Handle BRUSH, LEVEL, SMOOTH, BRIDGE modes
 		if current_quick_paint:
 			# QUICK PAINT MODE: Apply all changes as ONE atomic undo/redo action
-			# This fixes the issue where 6 separate actions were created per brush stroke
-
+			# This fixes the issue where 6 separate actions are created per brush stroke
+			
 			# Build wall color patterns (with expansion to adjacent cells for boundary walls)
 			_set_vertex_colors(current_quick_paint.wall_texture_slot)
-
+			
 			var wall_color_pattern := {}
 			var wall_color_pattern_cc := {}
 			var wall_color_restore := {}
 			var wall_color_restore_cc := {}
-
+			
 			# First pass: collect all cells in the pattern
 			for chunk_coords in pattern:
 				wall_color_pattern[chunk_coords] = {}
@@ -647,7 +644,7 @@ func draw_pattern(terrain: MarchingSquaresTerrain):
 					wall_color_restore_cc[chunk_coords][cell_coords] = chunk.get_wall_color_1(cell_coords)
 					wall_color_pattern[chunk_coords][cell_coords] = vertex_color_0
 					wall_color_pattern_cc[chunk_coords][cell_coords] = vertex_color_1
-
+			
 			# Second pass: expand to adjacent cells (walls appear at boundaries)
 			for chunk_coords in pattern:
 				for cell_coords in pattern[chunk_coords]:
@@ -763,7 +760,7 @@ func draw_pattern(terrain: MarchingSquaresTerrain):
 			undo_redo.commit_action()
 
 
-# For each cell in pattern, raise/lower by y delta.
+# For each cell in pattern, raise/lower by y delta
 func draw_height_pattern_action(terrain: MarchingSquaresTerrain, pattern: Dictionary):
 	for draw_chunk_coords: Vector2i in pattern:
 		var draw_chunk_dict = pattern[draw_chunk_coords]
@@ -782,6 +779,7 @@ func draw_color_0_pattern_action(terrain: MarchingSquaresTerrain, pattern: Dicti
 			var color: Color = draw_chunk_dict[draw_cell_coords]
 			chunk.draw_color_0(draw_cell_coords.x, draw_cell_coords.y, color)
 		chunk.regenerate_mesh()
+
 
 func draw_color_1_pattern_action(terrain: MarchingSquaresTerrain, pattern: Dictionary):
 	for draw_chunk_coords: Vector2i in pattern:
@@ -824,7 +822,7 @@ func draw_wall_color_1_pattern_action(terrain: MarchingSquaresTerrain, pattern: 
 
 
 # Applies all terrain patterns atomically (for quick paint brush and vertex painting operations)
-# patterns dict keys: "height", "wall_color_0", "wall_color_1", "grass_mask", "color_0", "color_1"
+# Patterns dict keys: "height", "wall_color_0", "wall_color_1", "grass_mask", "color_0", "color_1"
 # This consolidates multiple data changes into ONE undo/redo action with ONE mesh regeneration
 func apply_composite_pattern_action(terrain: MarchingSquaresTerrain, patterns: Dictionary) -> void:
 	var affected_chunks : Dictionary = {}  # chunk_coords -> chunk reference
@@ -942,9 +940,9 @@ func _set_new_textures(_preset: MarchingSquaresTexturePreset) -> void:
 	if _preset == null:
 		return
 	
-	#Set BatchUpdate flag to avoid indivudal setters triggering updates
+	# Set BatchUpdate flag to avoid indivudal setters triggering updates
 	current_terrain_node.is_batch_updating = true
-
+	
 	for i in range(6): # The range is 6 because MarchingSquaresTextureList currently has 6 export variables
 		match i:
 			0: # floor_textures
@@ -981,7 +979,7 @@ func _set_new_textures(_preset: MarchingSquaresTexturePreset) -> void:
 							current_terrain_node.texture_13 = tex
 						13:
 							current_terrain_node.texture_14 = tex
-						14: #Are we not adding 14 cause texture_15 is used for VOID?
+						14: #Are we not adding 14 cause texture_15 is used for VOID? -> COMMENT (YUGEN): yes, void should stay void in all scenarios
 							current_terrain_node.texture_15 = tex
 			1: # grass_sprites
 				for i_grass_text in range(_preset.new_textures.grass_sprites.size()):
@@ -1070,22 +1068,22 @@ func _set_new_textures(_preset: MarchingSquaresTexturePreset) -> void:
 	
 	vp_texture_names.floor_texture_names = _preset.new_tex_names.floor_texture_names
 	vp_texture_names.wall_texture_names = _preset.new_tex_names.wall_texture_names
-
-
-	#Apply a batch update
+	
+	# Apply a batch update
 	current_terrain_node.force_batch_update()
-
+	
 	# Mark scene as modified so user knows to save
 	EditorInterface.mark_scene_as_unsaved()
-
-	#store current preset
+	
+	# Store current preset
 	current_terrain_node.current_terrain_preset = _preset
-
-	#Set batch update to false, to allow setters to work individually
+	
+	# Set batch update to false, to allow setters to work individually
 	current_terrain_node.is_batch_updating = false
-
-	#Ensure the Editor is updated live (trick it to redraw - There might be an easier way but this works)
+	
+	# Ensure the Editor is updated live (trick it to redraw - There might be an easier way but this works)
 	EditorInterface.inspect_object(current_terrain_node)
+
 
 func get_cell_normal(chunk: MarchingSquaresTerrainChunk, cell: Vector2i) -> Vector3:
 	var h_c := chunk.get_height(cell)

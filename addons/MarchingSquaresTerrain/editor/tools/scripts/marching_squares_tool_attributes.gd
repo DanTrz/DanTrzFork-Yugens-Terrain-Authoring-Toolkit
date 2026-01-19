@@ -6,7 +6,7 @@ class_name MarchingSquaresToolAttributes
 signal setting_changed(setting: String, value: Variant)
 signal terrain_setting_changed(setting: String, value: Variant)
 
-const TEXTURE_PRESETS_PATH :String= "res://addons/MarchingSquaresTerrain/resources/texture presets/"
+const TEXTURE_PRESETS_PATH : String= "res://addons/MarchingSquaresTerrain/resources/texture presets/"
 const GLOBAL_QUICK_PAINTS_PATH : String = "res://addons/MarchingSquaresTerrain/resources/quick paints/global/"
 
 enum SettingType {
@@ -24,7 +24,7 @@ enum SettingType {
 var terrain_settings_data : Dictionary = {
 	"dimensions": "Vector3i",
 	"cell_size": "Vector2",
-	"wall_threshold": "EditorSpinSlider",
+	"use_hard_textures": "CheckBox",
 	"noise_hmap": "EditorResourcePicker",
 	"wall_texture": "EditorResourcePicker",
 	"wall_color": "ColorPickerButton",
@@ -44,6 +44,7 @@ var settings : Dictionary = {}
 var last_setting_type : SettingType = SettingType.ERROR
 var selected_chunk : MarchingSquaresTerrainChunk
 
+
 func _ready() -> void:
 	set_custom_minimum_size(Vector2(0, 35))
 	add_theme_constant_override("separation", 5)
@@ -61,7 +62,6 @@ func show_tool_attributes(tool_index: int) -> void:
 	
 	if not plugin.toolbar.toolbox:
 		return
-	
 	
 	var tool = plugin.toolbar.toolbox.tools.get(tool_index)
 	var tool_attributes : MarchingSquaresToolAttributeSettings = tool.get("attributes")
@@ -272,9 +272,9 @@ func add_setting(p_params: Dictionary) -> void:
 				pass 
 		SettingType.QUICK_PAINT:
 			var quick_paint_button := OptionButton.new()
-			quick_paint_button.add_item("None")  # First option is no paint
+			quick_paint_button.add_item("None")  # First option is no paint. #TODO Doesn't seem to work right now and needs to be fixed later.
 			quick_paint_button.set_item_metadata(0, null)
-
+			
 			# 1. Load GLOBAL quick paints from folder (always available)
 			var dir := DirAccess.open(GLOBAL_QUICK_PAINTS_PATH)
 			if dir:
@@ -288,8 +288,8 @@ func add_setting(p_params: Dictionary) -> void:
 							quick_paint_button.set_item_metadata(quick_paint_button.item_count - 1, quick_paint)
 					file_name = dir.get_next()
 				dir.list_dir_end()
-
-			# 2. Load PRESET-SPECIFIC quick paints (if preset selected and has any)
+			
+			# 2. Load PRESET-SPECIFIC quick paints (if preset is selected and has any)
 			var terrain := MarchingSquaresTerrainPlugin.instance.current_terrain_node
 			if terrain and terrain.current_terrain_preset:
 				var preset := terrain.current_terrain_preset
@@ -299,14 +299,14 @@ func add_setting(p_params: Dictionary) -> void:
 						if quick_paint:
 							quick_paint_button.add_item(quick_paint.paint_name)
 							quick_paint_button.set_item_metadata(quick_paint_button.item_count - 1, quick_paint)
-
+			
 			quick_paint_button.set_flat(true)
 			quick_paint_button.item_selected.connect(func(index):
 				var selected_quick_paint = quick_paint_button.get_item_metadata(index)
 				_on_setting_changed(setting_name, selected_quick_paint)
 			)
 			quick_paint_button.set_custom_minimum_size(Vector2(100, 35))
-
+			
 			# Sync dropdown selection with current plugin.current_quick_paint
 			var current_quick_paint = _get_setting_value(setting_name)
 			if current_quick_paint == null:
@@ -317,7 +317,7 @@ func add_setting(p_params: Dictionary) -> void:
 					if quick_paint_button.get_item_metadata(i) == current_quick_paint:
 						quick_paint_button.select(i)
 						break
-
+			
 			cont = CenterContainer.new()
 			cont.set_custom_minimum_size(Vector2(100, 35))
 			cont.add_child(quick_paint_button, true)

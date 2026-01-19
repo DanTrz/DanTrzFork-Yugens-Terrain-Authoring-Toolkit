@@ -122,7 +122,7 @@ func add_texture_settings() -> void:
 		var sprite_var : CompressedTexture2D #EditorResourcePicker
 		var color_var : Color #ColorPickerButton
 		var use_grass_var : bool #Checkbox
-
+		
 		# Add the ground vertex texture
 		var editor_r_picker := EditorResourcePicker.new()
 		editor_r_picker.set_base_type("Texture2D")
@@ -138,7 +138,7 @@ func add_texture_settings() -> void:
 			# Skip empty/abstract Texture2D objects
 			if sprite_var != null and sprite_var.get_class() == "Texture2D":
 				sprite_var = null
-
+			
 			var editor_r_picker2 := EditorResourcePicker.new()
 			editor_r_picker2.set_base_type("Texture2D")
 			editor_r_picker2.edited_resource = sprite_var
@@ -176,14 +176,14 @@ func add_texture_settings() -> void:
 		
 		if i <= 5:
 			vbox.add_child(HSeparator.new())
-
+	
 	# Wall Textures Section Header
 	var wall_header := Label.new()
 	wall_header.set_text("=== WALL TEXTURES ===")
 	wall_header.set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER)
 	vbox.add_child(wall_header)
 	vbox.add_child(HSeparator.new())
-
+	
 	# Wall textures loop (6 slots)
 	for i in range(6):
 		var label := Label.new()
@@ -208,7 +208,7 @@ func add_texture_settings() -> void:
 		)
 		editor_r_picker.set_custom_minimum_size(Vector2(100, 25))
 		vbox.add_child(editor_r_picker, true)
-
+		
 		# Wall color picker
 		var wall_color : Color = terrain.get(WALL_VAR_NAMES[i].get("color_var"))
 		var c_pick_button := ColorPickerButton.new()
@@ -221,9 +221,9 @@ func add_texture_settings() -> void:
 		c_cont_2.set_custom_minimum_size(Vector2(150, 25))
 		c_cont_2.add_child(c_pick_button, true)
 		vbox.add_child(c_cont_2, true)
-
+		
 		vbox.add_child(HSeparator.new())
-
+	
 	add_child(vbox, true)
 
 

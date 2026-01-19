@@ -7,7 +7,6 @@ const GRASS_TEXTURE : Texture2D = preload("res://addons/MarchingSquaresTerrain/r
 const WALL_TEXTURE : Texture2D = preload("res://addons/MarchingSquaresTerrain/resources/materials/wall_noise_texture.res")
 const GRASS_SPRITE : Texture2D = preload("res://addons/MarchingSquaresTerrain/resources/materials/grass_leaf_sprite.png")
 
-
 @export var floor_textures : Array[Texture2D] = [
 	GRASS_TEXTURE, GRASS_TEXTURE, GRASS_TEXTURE, GRASS_TEXTURE,
 	GRASS_TEXTURE, GRASS_TEXTURE, Texture2D.new(), Texture2D.new(),

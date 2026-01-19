@@ -26,12 +26,12 @@ const MERGE_MODE = {
 				grass_mat.set_shader_parameter("is_merge_round", false)
 			merge_threshold = MERGE_MODE[mode]
 			regenerate_all_cells()
-@export_storage var height_map : Array # Stores the heights from the heightmap.
+@export_storage var height_map : Array # Stores the heights from the heightmap
 @export_storage var color_map_0 : PackedColorArray # Stores the colors from vertex_color_0 (ground)
 @export_storage var color_map_1 : PackedColorArray # Stores the colors from vertex_color_1 (ground)
 @export_storage var wall_color_map_0 : PackedColorArray # Stores the colors for wall vertices (slot encoding channel 0)
 @export_storage var wall_color_map_1 : PackedColorArray # Stores the colors for wall vertices (slot encoding channel 1)
-@export_storage var grass_mask_map : PackedColorArray # Stores if a cell should have grass or not.
+@export_storage var grass_mask_map : PackedColorArray # Stores if a cell should have grass or not
 
 var merge_threshold : float = MERGE_MODE[Mode.POLYHEDRON]
 
@@ -88,7 +88,7 @@ var cd : bool
 var needs_update : Array[Array] # Stores which tiles need to be updated because one of their corners' heights was changed.
 var _skip_save_on_exit : bool = false # Set to true when chunk is removed temporarily (undo/redo)
 
-#terrain blend options to allow for smooth color and height blend influence at transitions and at different heights 
+# Terrain blend options to allow for smooth color and height blend influence at transitions and at different heights 
 var lower_thresh : float = 0.3 # Sharp bands: < 0.3 = lower color
 var upper_thresh : float = 0.7 #, > 0.7 = upper color, middle = blend
 var blend_zone = upper_thresh - lower_thresh
@@ -131,10 +131,10 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 
 func _exit_tree() -> void:
 	# Only erase if terrain_system still has THIS chunk at chunk_coords
-	# (avoids double-erase when remove_chunk_from_tree already erased it)
+	# (avoids double-erasure when remove_chunk_from_tree already erased it)
 	if terrain_system and terrain_system.chunks.get(chunk_coords) == self:
 		terrain_system.chunks.erase(chunk_coords)
-
+	
 	# Only save mesh if not being removed temporarily (undo/redo)
 	if not _skip_save_on_exit:
 		# Guard get_tree() - can be null during multi-scene transitions
@@ -152,7 +152,7 @@ func regenerate_mesh():
 	st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
 	st.set_custom_format(1, SurfaceTool.CUSTOM_RGBA_FLOAT)
 	st.set_custom_format(2, SurfaceTool.CUSTOM_RGBA_FLOAT)  # PHANTOM FIX: mat_indices + blend_weight
-
+	
 	var start_time: int = Time.get_ticks_msec()
 	
 	if not find_child("GrassPlanter"):
@@ -226,7 +226,7 @@ func generate_terrain_cells():
 					st.add_vertex(verts[i])
 				continue
 			
-			# Cell is now being updated, set needs update to false
+			# Cell is now being updated
 			needs_update[z][x] = false
 			
 			# If geometry did change or none exists yet, 
@@ -249,17 +249,17 @@ func generate_terrain_cells():
 			by = height_map[z][x+1] # top-right
 			cy = height_map[z+1][x] # bottom-left
 			dy = height_map[z+1][x+1] # bottom-right
-
+			
 			# Calculate cell height range for boundary detection (height-based color sampling)
 			cell_min_height = min(ay, by, cy, dy)
 			cell_max_height = max(ay, by, cy, dy)
-
+			
 			# Determine if this is a boundary cell (significant height variation)
 			cell_is_boundary = (cell_max_height - cell_min_height) > merge_threshold
-
+			
 			# Calculate the 2 dominant textures for this cell ONCE (phantom fix)
 			calculate_cell_material_pair(color_map_0, color_map_1)
-
+			
 			if cell_is_boundary:
 				# Identify corners at each height level for height-based color sampling
 				# FLOOR colors - from color_map (used for regular floor vertices)
@@ -289,7 +289,7 @@ func generate_terrain_cells():
 					wall_color_map_1[(z + 1) * dimensions.x + x + 1]
 				]
 				var corner_heights = [ay, by, cy, dy]
-
+				
 				# Find corners at min and max height
 				var min_idx = 0
 				var max_idx = 0
@@ -298,7 +298,7 @@ func generate_terrain_cells():
 						min_idx = i
 					if corner_heights[i] > corner_heights[max_idx]:
 						max_idx = i
-
+				
 				# Floor boundary colors (from ground color_map)
 				cell_floor_lower_color_0 = floor_corner_colors_0[min_idx]
 				cell_floor_upper_color_0 = floor_corner_colors_0[max_idx]
@@ -309,7 +309,7 @@ func generate_terrain_cells():
 				cell_wall_upper_color_0 = wall_corner_colors_0[max_idx]
 				cell_wall_lower_color_1 = wall_corner_colors_1[min_idx]
 				cell_wall_upper_color_1 = wall_corner_colors_1[max_idx]
-
+			
 			# Track which edges shold be connected and not have a wall bewteen them.
 			ab = abs(ay-by) < merge_threshold # top edge
 			ac = abs(ay-cy) < merge_threshold # bottom edge
@@ -649,8 +649,8 @@ func rotate_cell(rotations: int):
 	cy = point_heights[(r+3)%4]
 
 
-# Adds a point. Coordinates are relative to the top-left corner (not mesh origin relative).
-# UV.x is closeness to the bottom of an edge. and UV.Y is closeness to the edge of a cliff.
+# Adds a point. Coordinates are relative to the top-left corner (not mesh origin relative)
+# UV.x is closeness to the bottom of an edge. UV.Y is closeness to the edge of a cliff
 func add_point(x: float, y: float, z: float, uv_x: float = 0, uv_y: float = 0, diag_midpoint: bool = false):
 	for i in range(r):
 		var temp = x
@@ -661,19 +661,19 @@ func add_point(x: float, y: float, z: float, uv_x: float = 0, uv_y: float = 0, d
 	# Walls will always have UV of 1, 1
 	var uv = Vector2(uv_x, uv_y) if floor_mode else Vector2(1, 1)
 	st.set_uv(uv)
-
+	
 	# Detect ridge BEFORE selecting color maps (ridge needs wall colors, not ground colors)
 	var is_ridge := false
 	if floor_mode and terrain_system.use_ridge_texture:
 		is_ridge = (uv.y > 1.0 - terrain_system.ridge_threshold)
-
+	
 	# Select source color maps based on floor_mode AND ridge detection
 	# Floor vertices use color_map_0/1
 	# Wall vertices AND ridge vertices use wall_color_map_0/1
 	var use_wall_colors := (not floor_mode) or is_ridge
 	var source_map_0 : PackedColorArray = wall_color_map_0 if use_wall_colors else color_map_0
 	var source_map_1 : PackedColorArray = wall_color_map_1 if use_wall_colors else color_map_1
-
+	
 	# Use the minimum between both lerped diagonals, component-wise
 	# Will result in smoother diagonal paths
 	var color_0: Color
@@ -693,11 +693,11 @@ func add_point(x: float, y: float, z: float, uv_x: float = 0, uv_y: float = 0, d
 		# This prevents color bleeding between different height levels
 		var height_range = cell_max_height - cell_min_height
 		var height_factor = clamp((y - cell_min_height) / height_range, 0.0, 1.0)
-
+		
 		# Select appropriate color set based on vertex type (floor vs wall/ridge)
 		var lower_0: Color = cell_wall_lower_color_0 if use_wall_colors else cell_floor_lower_color_0
 		var upper_0: Color = cell_wall_upper_color_0 if use_wall_colors else cell_floor_upper_color_0
-
+		
 		# Sharp bands: < 0.3 = lower color, > 0.7 = upper color, middle = blend
 		if height_factor < lower_thresh:
 			color_0 = lower_0
@@ -710,10 +710,12 @@ func add_point(x: float, y: float, z: float, uv_x: float = 0, uv_y: float = 0, d
 	else:
 		var ab_color = lerp(source_map_0[cell_coords.y*dimensions.x + cell_coords.x], source_map_0[cell_coords.y*dimensions.x + cell_coords.x + 1], x)
 		var cd_color = lerp(source_map_0[(cell_coords.y + 1)*dimensions.x + cell_coords.x], source_map_0[(cell_coords.y + 1)*dimensions.x + cell_coords.x + 1], x)
-		color_0 = get_dominant_color(lerp(ab_color, cd_color, z)) #Use this for mixed triangles
-		# color_0 = source_map_0[cell_coords.y * dimensions.x + cell_coords.x] #Use this for perfect square tiles
+		if not terrain_system.use_hard_textures:
+			color_0 = get_dominant_color(lerp(ab_color, cd_color, z)) # Use this for mixed triangles
+		else:
+			color_0 = source_map_0[cell_coords.y * dimensions.x + cell_coords.x] # Use this for perfect square tiles
 	st.set_color(color_0)
-
+	
 	var color_1: Color
 	if new_chunk:
 		color_1 = Color(1.0, 0.0, 0.0, 0.0)
@@ -731,11 +733,11 @@ func add_point(x: float, y: float, z: float, uv_x: float = 0, uv_y: float = 0, d
 		# This prevents color bleeding between different height levels
 		var height_range = cell_max_height - cell_min_height
 		var height_factor = clamp((y - cell_min_height) / height_range, 0.0, 1.0)
-
+		
 		# Select appropriate color set based on vertex type (floor vs wall/ridge)
 		var lower_1: Color = cell_wall_lower_color_1 if use_wall_colors else cell_floor_lower_color_1
 		var upper_1: Color = cell_wall_upper_color_1 if use_wall_colors else cell_floor_upper_color_1
-
+		
 		# Sharp bands: < 0.3 = lower color, > 0.7 = upper color, middle = blend
 		if height_factor < 0.3:
 			color_1 = lower_1
@@ -748,15 +750,17 @@ func add_point(x: float, y: float, z: float, uv_x: float = 0, uv_y: float = 0, d
 	else:
 		var ab_color = lerp(source_map_1[cell_coords.y*dimensions.x + cell_coords.x], source_map_1[cell_coords.y*dimensions.x + cell_coords.x + 1], x)
 		var cd_color = lerp(source_map_1[(cell_coords.y + 1)*dimensions.x + cell_coords.x], source_map_1[(cell_coords.y + 1)*dimensions.x + cell_coords.x + 1], x)
-		color_1 = get_dominant_color(lerp(ab_color, cd_color, z)) #Use this for mixed triangles
-		# color_1 = source_map_1[cell_coords.y * dimensions.x + cell_coords.x] #Use this for perfect square tiles
+		if not terrain_system.use_hard_textures:
+			color_1 = get_dominant_color(lerp(ab_color, cd_color, z)) # Use this for mixed triangles
+		else:
+			color_1 = source_map_1[cell_coords.y * dimensions.x + cell_coords.x] # Use this for perfect square tiles
 	st.set_custom(0, color_1)
-
+	
 	# is_ridge already calculated above (before color source selection)
 	var g_mask: Color = grass_mask_map[cell_coords.y*dimensions.x + cell_coords.x]
 	g_mask.g = 1.0 if is_ridge else 0.0
 	st.set_custom(1, g_mask)
-
+	
 	# CUSTOM2: Material blend data for phantom fix (R=mat_a, G=mat_b, B=blend_weight, A=use_vertex_colors_flag)
 	var mat_blend : Color = calculate_material_blend_data(x, z, source_map_0, source_map_1)
 	# For boundary floor cells: tell shader to use vertex colors (height-adjusted) instead of phantom fix
@@ -766,7 +770,7 @@ func add_point(x: float, y: float, z: float, uv_x: float = 0, uv_y: float = 0, d
 	else:
 		mat_blend.a = 0.0  # Use phantom fix (prevents phantom 3rd texture on flat cells)
 	st.set_custom(2, mat_blend)
-
+	
 	var vert = Vector3((cell_coords.x+x) * cell_size.x, y, (cell_coords.y+z) * cell_size.y)
 	var uv2
 	if floor_mode:
@@ -813,24 +817,24 @@ func get_dominant_color(c: Color) -> Color:
 	return new_color
 
 
-## Convert vertex color pair to texture index (0-15) - PHANTOM FIX
+# Convert vertex color pair to texture index (0-15) - PHANTOM FIX
 func get_texture_index_from_colors(c0: Color, c1: Color) -> int:
 	var c0_idx : int = 0
 	var c0_max : float = c0.r
 	if c0.g > c0_max: c0_max = c0.g; c0_idx = 1
 	if c0.b > c0_max: c0_max = c0.b; c0_idx = 2
 	if c0.a > c0_max: c0_idx = 3
-
+	
 	var c1_idx : int = 0
 	var c1_max : float = c1.r
 	if c1.g > c1_max: c1_max = c1.g; c1_idx = 1
 	if c1.b > c1_max: c1_max = c1.b; c1_idx = 2
 	if c1.a > c1_max: c1_idx = 3
-
+	
 	return c0_idx * 4 + c1_idx
 
 
-## Convert texture index (0-15) back to color pair - PHANTOM FIX
+# Convert texture index (0-15) back to color pair - PHANTOM FIX
 func texture_index_to_colors(idx: int) -> Array[Color]:
 	var c0_channel : int = idx / 4
 	var c1_channel : int = idx % 4
@@ -849,7 +853,7 @@ func texture_index_to_colors(idx: int) -> Array[Color]:
 	return [c0, c1]
 
 
-## Calculate 2 dominant textures for current cell (prevents phantom textures) - PHANTOM FIX
+# Calculate 2 dominant textures for current cell (prevents phantom textures) - PHANTOM FIX
 func calculate_cell_material_pair(source_map_0: PackedColorArray, source_map_1: PackedColorArray) -> void:
 	var tex_a : int = get_texture_index_from_colors(
 		source_map_0[cell_coords.y * dimensions.x + cell_coords.x],
@@ -863,21 +867,21 @@ func calculate_cell_material_pair(source_map_0: PackedColorArray, source_map_1: 
 	var tex_d : int = get_texture_index_from_colors(
 		source_map_0[(cell_coords.y + 1) * dimensions.x + cell_coords.x + 1],
 		source_map_1[(cell_coords.y + 1) * dimensions.x + cell_coords.x + 1])
-
+	
 	var tex_counts : Dictionary = {}
 	tex_counts[tex_a] = tex_counts.get(tex_a, 0) + 1
 	tex_counts[tex_b] = tex_counts.get(tex_b, 0) + 1
 	tex_counts[tex_c] = tex_counts.get(tex_c, 0) + 1
 	tex_counts[tex_d] = tex_counts.get(tex_d, 0) + 1
-
+	
 	var sorted_textures : Array = tex_counts.keys()
 	sorted_textures.sort_custom(func(a, b): return tex_counts[a] > tex_counts[b])
-
+	
 	cell_mat_a = sorted_textures[0]
 	cell_mat_b = sorted_textures[1] if sorted_textures.size() > 1 else sorted_textures[0]
 
 
-## Calculate CUSTOM2 blend data: Color(mat_a/15, mat_b/15, blend_weight, 0) - PHANTOM FIX
+# Calculate CUSTOM2 blend data: Color(mat_a/15, mat_b/15, blend_weight, 0) - PHANTOM FIX
 func calculate_material_blend_data(vert_x: float, vert_z: float, source_map_0: PackedColorArray, source_map_1: PackedColorArray) -> Color:
 	var tex_a : int = get_texture_index_from_colors(
 		source_map_0[cell_coords.y * dimensions.x + cell_coords.x],
@@ -891,15 +895,15 @@ func calculate_material_blend_data(vert_x: float, vert_z: float, source_map_0: P
 	var tex_d : int = get_texture_index_from_colors(
 		source_map_0[(cell_coords.y + 1) * dimensions.x + cell_coords.x + 1],
 		source_map_1[(cell_coords.y + 1) * dimensions.x + cell_coords.x + 1])
-
+	
 	var weight_a : float = (1.0 - vert_x) * (1.0 - vert_z)
 	var weight_b : float = vert_x * (1.0 - vert_z)
 	var weight_c : float = (1.0 - vert_x) * vert_z
 	var weight_d : float = vert_x * vert_z
-
+	
 	var weight_mat_a : float = 0.0
 	var weight_mat_b : float = 0.0
-
+	
 	if tex_a == cell_mat_a: weight_mat_a += weight_a
 	elif tex_a == cell_mat_b: weight_mat_b += weight_a
 	if tex_b == cell_mat_a: weight_mat_a += weight_b
@@ -908,12 +912,12 @@ func calculate_material_blend_data(vert_x: float, vert_z: float, source_map_0: P
 	elif tex_c == cell_mat_b: weight_mat_b += weight_c
 	if tex_d == cell_mat_a: weight_mat_a += weight_d
 	elif tex_d == cell_mat_b: weight_mat_b += weight_d
-
+	
 	var total_weight : float = weight_mat_a + weight_mat_b
 	var blend_weight : float = 0.0
 	if total_weight > 0.001:
 		blend_weight = weight_mat_b / total_weight
-
+	
 	return Color(float(cell_mat_a) / 15.0, float(cell_mat_b) / 15.0, blend_weight, 0.0)
 
 
@@ -935,7 +939,7 @@ func add_full_floor():
 	
 	if (higher_poly_floors):
 		var ey = (ay+by+cy+dy)/4
-
+		
 		add_point(0, ay, 0)
 		add_point(1, by, 0)
 		add_point(0.5, ey, 0.5, 0, 0, true)
@@ -955,7 +959,7 @@ func add_full_floor():
 		add_point(0, ay, 0)
 		add_point(1, by, 0)
 		add_point(0, cy, 1)
-
+		
 		add_point(1, dy, 1)
 		add_point(0, cy, 1)
 		add_point(1, by, 0)
@@ -982,7 +986,7 @@ func add_outer_corner(floor_below: bool = true, floor_above: bool = true, flatte
 	add_point(0.5, ay, 0, 1, 1)
 	add_point(0.5, edge_by, 0, 1, 0)
 	add_point(0, ay, 0.5, 0, 1)
-
+	
 	if floor_below:
 		start_floor()
 		add_point(1, dy, 1)
@@ -1053,7 +1057,7 @@ func add_inner_corner(lower_floor: bool = true, full_upper_floor: bool = true, f
 		add_point(0, ay, 0)
 		add_point(0.5, ay, 0, 1, 0)
 		add_point(0, ay, 0.5, 1, 0)
-
+	
 	start_wall()
 	add_point(0, ay, 0.5, 1, 0)
 	add_point(0.5, ay, 0, 0, 0)
@@ -1062,7 +1066,7 @@ func add_inner_corner(lower_floor: bool = true, full_upper_floor: bool = true, f
 	add_point(0.5, corner_by, 0, 0, 1)
 	add_point(0, corner_cy, 0.5, 1, 1)
 	add_point(0.5, ay, 0, 0, 0)
-
+	
 	start_floor()
 	if full_upper_floor:
 		add_point(1, dy, 1)
@@ -1076,7 +1080,7 @@ func add_inner_corner(lower_floor: bool = true, full_upper_floor: bool = true, f
 		add_point(1, corner_by, 0)
 		add_point(0, corner_cy, 1)
 		add_point(0.5, corner_by, 0, 0, 1)
-		
+	
 	# if C and D are both higher than B, and B does not connect the corners, there's an edge above, place floors that will connect to the CD edge
 	if cd_floor:
 		# use height of B corner
@@ -1087,7 +1091,7 @@ func add_inner_corner(lower_floor: bool = true, full_upper_floor: bool = true, f
 		add_point(1, by, 0, 0, 0)
 		add_point(1, by, 0.5, 1, -1)
 		add_point(0, by, 0.5, 1, 1)
-		
+	
 	# if B and D are both higher than C, and C does not connect the corners, there's an edge above, place floors that will connect to the BD edge
 	if bd_floor: 
 		add_point(0, cy, 0.5, 0, 1)
@@ -1128,7 +1132,7 @@ func generate_height_map():
 		height_map[z].resize(dimensions.x)
 		for x in range(dimensions.x):
 			height_map[z][x] = 0.0
-		
+	
 	var noise = terrain_system.noise_hmap
 	if noise:
 		for z in range(dimensions.z):
@@ -1176,11 +1180,14 @@ func get_height(cc: Vector2i) -> float:
 func get_color_0(cc: Vector2i) -> Color:
 	return color_map_0[cc.y*dimensions.x + cc.x]
 
+
 func get_color_1(cc: Vector2i) -> Color:
 	return color_map_1[cc.y*dimensions.x + cc.x]
 
+
 func get_wall_color_0(cc: Vector2i) -> Color:
 	return wall_color_map_0[cc.y*dimensions.x + cc.x]
+
 
 func get_wall_color_1(cc: Vector2i) -> Color:
 	return wall_color_map_1[cc.y*dimensions.x + cc.x]

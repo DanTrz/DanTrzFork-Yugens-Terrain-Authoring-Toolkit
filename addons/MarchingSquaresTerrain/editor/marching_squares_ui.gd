@@ -20,6 +20,7 @@ var visible: bool = false
 func _enter_tree() -> void:
 	call_deferred("_deferred_enter_tree")
 
+
 func _deferred_enter_tree() -> void:
 	if not Engine.is_editor_hint():
 		printerr("ERROR: [MarchingSquaresUI] attempt to load during runtime (NOT SUPPORTED)")
@@ -81,20 +82,21 @@ func set_visible(is_visible: bool) -> void:
 
 func _on_tool_changed(tool_index: int) -> void:
 	active_tool = tool_index
-
+	
 	if tool_index == 5: # Vertex Painting
 		tool_attributes.attribute_list = MarchingSquaresToolAttributesList.new()
 		texture_settings.show()
 		texture_settings.add_texture_settings()
-		
 	else:
 		texture_settings.hide()
+	
 	if tool_index == 3: # Bridge tool
 		plugin.falloff = false
 		plugin.BRUSH_RADIUS_MATERIAL.set_shader_parameter("falloff_visible", false)
+	
 	plugin.active_tool = tool_index
 	plugin.mode = tool_index
-	plugin.vertex_color_idx = 0 #Set to the first material on start # Woring around a UI sync bug. #TODO: This is temp workaround - Possible refactor.
+	plugin.vertex_color_idx = 0 # Set to the first material on start # Working around a UI sync bug. #TODO: This is temp workaround - Possible refactor.
 	tool_attributes.show_tool_attributes(active_tool)
 
 
@@ -118,7 +120,6 @@ func _on_setting_changed(p_setting_name: String, p_value: Variant) -> void:
 		"falloff":
 			if p_value is bool:
 				plugin.falloff = p_value
-				# Update the brush radius material
 				if plugin.BRUSH_RADIUS_MATERIAL:
 					plugin.BRUSH_RADIUS_MATERIAL.set_shader_parameter("falloff_visible", p_value)
 		"strength":
@@ -163,6 +164,9 @@ func _on_terrain_setting_changed(p_setting_name: String, p_value: Variant) -> vo
 		"cell_size":
 			if p_value is Vector2:
 				terrain.cell_size = p_value
+		"use_hard_textures":
+			if p_value is bool:
+				terrain.use_hard_textures = p_value
 		"wall_threshold":
 			if p_value is float:
 				terrain.wall_threshold = p_value
@@ -196,10 +200,9 @@ func _on_terrain_setting_changed(p_setting_name: String, p_value: Variant) -> vo
 
 
 func _on_texture_setting_changed(p_setting_name: String, p_value: Variant) -> void:
-	# print("Texture setting changed: ", p_setting_name, " to ", p_value)
 	var terrain := plugin.current_terrain_node
 	if not terrain:
-		push_warning("[MarchingSquaresUI] No current terrain node to apply texture settings to.")
+		printerr("ERROR: [MarchingSquaresUI] No current terrain node to apply texture settings to")
 		return
 	match p_setting_name:
 		"ground_texture":
@@ -298,7 +301,6 @@ func _on_texture_setting_changed(p_setting_name: String, p_value: Variant) -> vo
 		"texture_15":
 			if p_value is Texture2D or p_value == null:
 				terrain.texture_15 = p_value
-		# Wall textures
 		"wall_texture":
 			if p_value is Texture2D or p_value == null:
 				terrain.wall_texture = p_value
@@ -317,7 +319,6 @@ func _on_texture_setting_changed(p_setting_name: String, p_value: Variant) -> vo
 		"wall_texture_6":
 			if p_value is Texture2D or p_value == null:
 				terrain.wall_texture_6 = p_value
-		# Wall colors
 		"wall_color":
 			if p_value is Color:
 				terrain.wall_color = p_value
@@ -336,6 +337,5 @@ func _on_texture_setting_changed(p_setting_name: String, p_value: Variant) -> vo
 		"wall_color_6":
 			if p_value is Color:
 				terrain.wall_color_6 = p_value
-
-	# Finally, save to preset
+	
 	terrain.save_to_preset()

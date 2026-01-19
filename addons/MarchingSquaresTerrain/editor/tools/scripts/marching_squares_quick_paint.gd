@@ -36,5 +36,5 @@ func _get_property_list() -> Array[Dictionary]:
 		"hint_string": ",".join(TEXTURE_NAMES.floor_texture_names),
 		"usage": PROPERTY_USAGE_DEFAULT,
 	})
-
+	
 	return properties

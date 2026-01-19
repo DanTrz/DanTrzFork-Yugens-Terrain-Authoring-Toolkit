@@ -6,7 +6,7 @@
 [ext_resource type="Texture2D" uid="uid://cv87twjgbqq0s" path="res://addons/MarchingSquaresTerrain/resources/materials/wall_noise_texture.res" id="4_30qmr"]
 
 [resource]
-render_priority = 0
+render_priority = -1
 shader = ExtResource("1_cywoj")
 shader_parameter/wall_threshold = 0.0
 shader_parameter/chunk_size = Vector3i(32, 32, 32)

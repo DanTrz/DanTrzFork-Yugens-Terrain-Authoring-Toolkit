@@ -9,6 +9,12 @@ class_name MarchingSquaresTerrain
 		dimensions = value
 		terrain_material.set_shader_parameter("chunk_size", value)
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var cell_size : Vector2 = Vector2(2, 2) # XZ Unit size of each cell
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var use_hard_textures : bool = false:
+	set(value):
+		use_hard_textures = value
+		terrain_material.set_shader_parameter("use_hard_square_edges", value)
+		for chunk: MarchingSquaresTerrainChunk in chunks.values():
+			chunk.regenerate_all_cells()
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_threshold : float = 0.0: # Determines on what part of the terrain's mesh are walls
 	set(value):
 		wall_threshold = value
@@ -366,10 +372,10 @@ var placeholder_wind_texture := preload("res://addons/MarchingSquaresTerrain/res
 var terrain_material : ShaderMaterial = null
 var grass_mesh : QuadMesh = null 
 
-
 var is_batch_updating : bool = false
 
 var chunks : Dictionary = {}
+
 
 func _init() -> void:
 	# Create unique copies of shared resources for this node instance
@@ -379,19 +385,20 @@ func _init() -> void:
 	grass_mesh = base_grass_mesh.duplicate(true)
 	grass_mesh.material = base_grass_mesh.material.duplicate(true)
 
+
 func _enter_tree() -> void:
 	call_deferred("_deferred_enter_tree")
 
-	
+
 func _deferred_enter_tree() -> void:
 	if not Engine.is_editor_hint():
 		return
-
+	
 	# Apply all persisted textures/colors to this terrain's unique shader materials
 	# This is needed because _init() creates fresh duplicated materials that don't have
 	# the terrain's saved texture values - only the base resource defaults
 	force_batch_update()
-
+	
 	chunks.clear()
 	for chunk in get_children():
 		if chunk is MarchingSquaresTerrainChunk:
@@ -401,8 +408,8 @@ func _deferred_enter_tree() -> void:
 			chunk.grass_planter = null
 			
 			chunk.initialize_terrain(true)
-			
-		
+
+
 func has_chunk(x: int, z: int) -> bool:
 	return chunks.has(Vector2i(x, z))
 
@@ -459,9 +466,9 @@ func add_chunk(coords: Vector2i, chunk: MarchingSquaresTerrainChunk, regenerate_
 	chunk.terrain_system = self
 	chunk.chunk_coords = coords
 	chunk._skip_save_on_exit = false  # Reset flag when chunk is re-added (undo restores chunk)
-
+	
 	add_child(chunk)
-
+	
 	# Use position instead of global_position to avoid "is_inside_tree()" errors
 	# when multiple scenes with MarchingSquaresTerrain are open in editor tabs.
 	# Since chunks are direct children of terrain, position equals global_position.
@@ -524,11 +531,12 @@ func _ensure_textures() -> void:
 	terrain_material.set_shader_parameter("wall_albedo_5", wall_color_5)
 	terrain_material.set_shader_parameter("wall_albedo_6", wall_color_6)
 
-## Applies all shader parameters and regenerates grass once.
-## Call this after setting is_batch_updating = true and changing properties.
+
+# Applies all shader parameters and regenerates grass once
+# Call this after setting is_batch_updating = true and changing properties
 func force_batch_update() -> void:
 	var grass_mat := grass_mesh.material as ShaderMaterial
-
+	
 	# TERRAIN MATERIAL - Ground TExtures
 	terrain_material.set_shader_parameter("vc_tex_rr", ground_texture)
 	terrain_material.set_shader_parameter("vc_tex_rg", texture_2)
@@ -545,7 +553,7 @@ func force_batch_update() -> void:
 	terrain_material.set_shader_parameter("vc_tex_ar", texture_13)
 	terrain_material.set_shader_parameter("vc_tex_ag", texture_14)
 	terrain_material.set_shader_parameter("vc_tex_ab", texture_15)
-
+	
 	# TERRAIN MATERIAL - Wall Textures
 	terrain_material.set_shader_parameter("wall_tex_1", wall_texture)
 	terrain_material.set_shader_parameter("wall_tex_2", wall_texture_2)
@@ -553,7 +561,7 @@ func force_batch_update() -> void:
 	terrain_material.set_shader_parameter("wall_tex_4", wall_texture_4)
 	terrain_material.set_shader_parameter("wall_tex_5", wall_texture_5)
 	terrain_material.set_shader_parameter("wall_tex_6", wall_texture_6)
-
+	
 	# TERRAIN MATERIAL - Ground Colors
 	terrain_material.set_shader_parameter("ground_albedo", ground_color)
 	terrain_material.set_shader_parameter("ground_albedo_2", ground_color_2)
@@ -561,7 +569,7 @@ func force_batch_update() -> void:
 	terrain_material.set_shader_parameter("ground_albedo_4", ground_color_4)
 	terrain_material.set_shader_parameter("ground_albedo_5", ground_color_5)
 	terrain_material.set_shader_parameter("ground_albedo_6", ground_color_6)
-
+	
 	# TERRAIN MATERIAL - Wall Colors 
 	terrain_material.set_shader_parameter("wall_albedo", wall_color)
 	terrain_material.set_shader_parameter("wall_albedo_2", wall_color_2)
@@ -569,7 +577,7 @@ func force_batch_update() -> void:
 	terrain_material.set_shader_parameter("wall_albedo_4", wall_color_4)
 	terrain_material.set_shader_parameter("wall_albedo_5", wall_color_5)
 	terrain_material.set_shader_parameter("wall_albedo_6", wall_color_6)
-
+	
 	# GRASS MATERIAL - Grass Textures 
 	grass_mat.set_shader_parameter("grass_texture", grass_sprite)
 	grass_mat.set_shader_parameter("grass_texture_2", grass_sprite_tex_2)
@@ -577,7 +585,7 @@ func force_batch_update() -> void:
 	grass_mat.set_shader_parameter("grass_texture_4", grass_sprite_tex_4)
 	grass_mat.set_shader_parameter("grass_texture_5", grass_sprite_tex_5)
 	grass_mat.set_shader_parameter("grass_texture_6", grass_sprite_tex_6)
-
+	
 	# GRASS MATERIAL - Grass Colors 
 	grass_mat.set_shader_parameter("grass_base_color", ground_color)
 	grass_mat.set_shader_parameter("grass_color_2", ground_color_2)
@@ -585,7 +593,7 @@ func force_batch_update() -> void:
 	grass_mat.set_shader_parameter("grass_color_4", ground_color_4)
 	grass_mat.set_shader_parameter("grass_color_5", ground_color_5)
 	grass_mat.set_shader_parameter("grass_color_6", ground_color_6)
-
+	
 	# GRASS MATERIAL - Use Base Color Flags 
 	grass_mat.set_shader_parameter("use_base_color", ground_texture == null)
 	grass_mat.set_shader_parameter("use_base_color_2", texture_2 == null)
@@ -593,27 +601,25 @@ func force_batch_update() -> void:
 	grass_mat.set_shader_parameter("use_base_color_4", texture_4 == null)
 	grass_mat.set_shader_parameter("use_base_color_5", texture_5 == null)
 	grass_mat.set_shader_parameter("use_base_color_6", texture_6 == null)
-
+	
 	# GRASS MATERIAL - Has Grass Flags 
 	grass_mat.set_shader_parameter("use_grass_tex_2", tex2_has_grass)
 	grass_mat.set_shader_parameter("use_grass_tex_3", tex3_has_grass)
 	grass_mat.set_shader_parameter("use_grass_tex_4", tex4_has_grass)
 	grass_mat.set_shader_parameter("use_grass_tex_5", tex5_has_grass)
 	grass_mat.set_shader_parameter("use_grass_tex_6", tex6_has_grass)
-
-	# REGENERATE GRASS - Only once at the end
+	
 	for chunk: MarchingSquaresTerrainChunk in chunks.values():
 		chunk.grass_planter.regenerate_all_cells()
 
-## Syncs and save current UI texture values to the given preset resource
-## Called by marching_squares_ui.gd when saving monitoring settings changes
+
+# Syncs and saves current UI texture values to the given preset resource
+# Called by marching_squares_ui.gd when saving monitoring settings changes
 func save_to_preset() -> void:
 	if current_terrain_preset == null:
-		push_warning("Cannot save to preset: No preset resource assigned to terrain system.")
+		printerr("ERROR: Cannot save to preset -> no preset resource assigned to terrain system")
 		return
-
 	
-	# print("Saving current terrain texture settings to preset: ", current_terrain_preset)
 	# Floor textures
 	current_terrain_preset.new_textures.floor_textures[0] = ground_texture
 	current_terrain_preset.new_textures.floor_textures[1] = texture_2
@@ -669,6 +675,3 @@ func save_to_preset() -> void:
 	current_terrain_preset.new_textures.wall_colors[3] = wall_color_4
 	current_terrain_preset.new_textures.wall_colors[4] = wall_color_5
 	current_terrain_preset.new_textures.wall_colors[5] = wall_color_6
-	
-
-	
