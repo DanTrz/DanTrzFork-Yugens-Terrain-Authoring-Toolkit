@@ -74,9 +74,9 @@ varying flat int material_index;
 varying vec4 vc_color_0;
 varying vec4 vc_color_1;
 
-// Phantom fix: Per-cell material indices (flat = no GPU interpolation)
-varying flat vec2 mat_indices;
-varying float mat_blend_weight;
+// Phantom fix: Per-cell material indices (flat = no GPU interpolation, supports 3 textures)
+varying flat vec3 mat_indices; // mat_a, mat_b, mat_c (each /15)
+varying vec2 mat_weights; // (weight_a, weight_b) - interpolated for smooth blending
 varying float use_vertex_colors; // Flag: 1.0 = use vertex colors (boundary cells), 0.0 = use phantom fix
 
 float hash(vec2 p) {
@@ -278,10 +278,14 @@ void vertex() {
 	vc_color_0 = COLOR;
 	vc_color_1 = CUSTOM0;
 
-	// CUSTOM2 contains per-cell material blend data: (mat_a/15, mat_b/15, blend_weight, use_vc_flag)
-	mat_indices = vec2(CUSTOM2.r, CUSTOM2.g);
-	mat_blend_weight = CUSTOM2.b;
-	use_vertex_colors = CUSTOM2.a; // 1.0 = boundary cell (use vertex colors), 0.0 = flat cell (use phantom fix)
+	// CUSTOM2 contains per-cell material blend data for phantom fix (3-texture support)
+	// Encoding: R=packed(mat_a,mat_b), G=mat_c/15, B=weight_a, A=weight_b (or A>=1.5 = use vertex colors)
+	float packed_mats = CUSTOM2.r * 255.0;
+	mat_indices.x = mod(packed_mats, 16.0) / 15.0;  // mat_a (0-15 -> 0-1)
+	mat_indices.y = floor(packed_mats / 16.0) / 15.0;  // mat_b (0-15 -> 0-1)
+	mat_indices.z = CUSTOM2.g;  // mat_c (already /15)
+	mat_weights = vec2(CUSTOM2.b, CUSTOM2.a);  // weight_a, weight_b (interpolated for smooth blending)
+	use_vertex_colors = CUSTOM2.a >= 1.5 ? 1.0 : 0.0;  // A=2.0 signals vertex colors
 }
 
 // ============================================================================
@@ -319,29 +323,65 @@ void fragment() {
 				}
 			}
 		}
-		// Flat cells: PHANTOM FIX using per-cell material indices (prevents phantom 3rd texture)
+		// Flat cells: PHANTOM FIX using per-cell material indices (supports 3 textures)
 		else {
 			int mat_a = int(round(mat_indices.x * 15.0));
 			int mat_b = int(round(mat_indices.y * 15.0));
-			float blend_weight = mat_blend_weight;
+			int mat_c = int(round(mat_indices.z * 15.0));
 
-			if (blend_noise_strength > 0.0) {
-				float n = noise(world_pos.xz * blend_noise_scale);
-				blend_weight = clamp(blend_weight + (n - 0.5) * blend_noise_strength, 0.0, 1.0);
+			// Weights are passed directly via mat_weights (interpolated by GPU for smooth blending)
+			float weight_a = mat_weights.x;
+			float weight_b = mat_weights.y;
+			float weight_c = 1.0 - weight_a - weight_b;
+
+			// Clamp to prevent negative weights from GPU interpolation precision issues
+			weight_a = max(0.0, weight_a);
+			weight_b = max(0.0, weight_b);
+			weight_c = max(0.0, weight_c);
+
+			// Renormalize to ensure weights sum to 1.0
+			float weight_sum = weight_a + weight_b + weight_c;
+			if (weight_sum > 0.001) {
+				weight_a /= weight_sum;
+				weight_b /= weight_sum;
+				weight_c /= weight_sum;
 			}
 
+			// Apply noise to weights if enabled
+			if (blend_noise_strength > 0.0) {
+				float n = noise(world_pos.xz * blend_noise_scale);
+				float noise_offset = (n - 0.5) * blend_noise_strength;
+				weight_a = clamp(weight_a + noise_offset, 0.0, 1.0);
+				weight_b = clamp(weight_b - noise_offset * 0.5, 0.0, 1.0);
+				weight_c = clamp(weight_c - noise_offset * 0.5, 0.0, 1.0);
+				// Renormalize
+				float total = weight_a + weight_b + weight_c;
+				if (total > 0.001) {
+					weight_a /= total;
+					weight_b /= total;
+					weight_c /= total;
+				}
+			}
+
+			// Apply sharpness to weights
 			if (blend_sharpness > 0.0) {
 				float power = 1.0 + blend_sharpness;
-				if (blend_weight < 0.5) {
-					blend_weight = 0.5 * pow(2.0 * blend_weight, power);
-				} else {
-					blend_weight = 1.0 - 0.5 * pow(2.0 * (1.0 - blend_weight), power);
+				weight_a = pow(weight_a, power);
+				weight_b = pow(weight_b, power);
+				weight_c = pow(weight_c, power);
+				// Renormalize after power function
+				float total = weight_a + weight_b + weight_c;
+				if (total > 0.001) {
+					weight_a /= total;
+					weight_b /= total;
+					weight_c /= total;
 				}
 			}
 
 			vec4 color_a = sample_material_by_index(mat_a, floor_uv);
 			vec4 color_b = sample_material_by_index(mat_b, floor_uv);
-			floor_color = mix(color_a, color_b, blend_weight);
+			vec4 color_c = sample_material_by_index(mat_c, floor_uv);
+			floor_color = color_a * weight_a + color_b * weight_b + color_c * weight_c;
 		}
 
 

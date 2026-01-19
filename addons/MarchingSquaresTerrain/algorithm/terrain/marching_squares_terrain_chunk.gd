@@ -77,9 +77,10 @@ var cell_wall_upper_color_0 : Color
 var cell_wall_lower_color_1 : Color
 var cell_wall_upper_color_1 : Color
 var cell_is_boundary : bool = false
-# Per-cell material pair for phantom fix (computed once per cell)
+# Per-cell materials for phantom fix (computed once per cell, supports up to 3 textures)
 var cell_mat_a : int = 0
 var cell_mat_b : int = 0
+var cell_mat_c : int = 0
 # Edge connected state
 var ab : bool
 var ac : bool
@@ -762,14 +763,12 @@ func add_point(x: float, y: float, z: float, uv_x: float = 0, uv_y: float = 0, d
 	g_mask.g = 1.0 if is_ridge else 0.0
 	st.set_custom(1, g_mask)
 	
-	# CUSTOM2: Material blend data for phantom fix (R=mat_a, G=mat_b, B=blend_weight, A=use_vertex_colors_flag)
+	# CUSTOM2: Material blend data for phantom fix (3-texture support)
+	# Encoding: R=packed(mat_a,mat_b), G=mat_c/15, B=weight_a, A=weight_b
+	# A >= 1.5 signals use vertex colors (boundary cells use A=2.0)
 	var mat_blend : Color = calculate_material_blend_data(x, z, source_map_0, source_map_1)
-	# For boundary floor cells: tell shader to use vertex colors (height-adjusted) instead of phantom fix
-	# This prevents height bleeding while keeping correct texture at height transitions
 	if cell_is_boundary and floor_mode:
-		mat_blend.a = 1.0  # Use vertex colors (OLD behavior)
-	else:
-		mat_blend.a = 0.0  # Use phantom fix (prevents phantom 3rd texture on flat cells)
+		mat_blend.a = 2.0  # Signal shader to use vertex colors instead of phantom fix
 	st.set_custom(2, mat_blend)
 	
 	var vert = Vector3((cell_coords.x+x) * cell_size.x, y, (cell_coords.y+z) * cell_size.y)
@@ -880,9 +879,15 @@ func calculate_cell_material_pair(source_map_0: PackedColorArray, source_map_1: 
 	
 	cell_mat_a = sorted_textures[0]
 	cell_mat_b = sorted_textures[1] if sorted_textures.size() > 1 else sorted_textures[0]
+	cell_mat_c = sorted_textures[2] if sorted_textures.size() > 2 else cell_mat_b
 
 
-# Calculate CUSTOM2 blend data: Color(mat_a/15, mat_b/15, blend_weight, 0) - PHANTOM FIX
+# Calculate CUSTOM2 blend data for PHANTOM FIX (3-texture support)
+# Encoding: Color(packed_mats, mat_c/15, weight_a, weight_b)
+#   - R: (mat_a + mat_b * 16) / 255.0  (packs 2 indices, each 0-15)
+#   - G: mat_c / 15.0
+#   - B: weight_a (0.0 to 1.0)
+#   - A: weight_b (0.0 to 1.0), or 2.0 to signal use_vertex_colors
 func calculate_material_blend_data(vert_x: float, vert_z: float, source_map_0: PackedColorArray, source_map_1: PackedColorArray) -> Color:
 	var tex_a : int = get_texture_index_from_colors(
 		source_map_0[cell_coords.y * dimensions.x + cell_coords.x],
@@ -896,30 +901,46 @@ func calculate_material_blend_data(vert_x: float, vert_z: float, source_map_0: P
 	var tex_d : int = get_texture_index_from_colors(
 		source_map_0[(cell_coords.y + 1) * dimensions.x + cell_coords.x + 1],
 		source_map_1[(cell_coords.y + 1) * dimensions.x + cell_coords.x + 1])
-	
+
+	# Position weights for bilinear interpolation
 	var weight_a : float = (1.0 - vert_x) * (1.0 - vert_z)
 	var weight_b : float = vert_x * (1.0 - vert_z)
 	var weight_c : float = (1.0 - vert_x) * vert_z
 	var weight_d : float = vert_x * vert_z
-	
+
+	# Accumulate weights for all 3 cell materials
 	var weight_mat_a : float = 0.0
 	var weight_mat_b : float = 0.0
-	
+	var weight_mat_c : float = 0.0
+
+	# Corner A
 	if tex_a == cell_mat_a: weight_mat_a += weight_a
 	elif tex_a == cell_mat_b: weight_mat_b += weight_a
+	elif tex_a == cell_mat_c: weight_mat_c += weight_a
+	# Corner B
 	if tex_b == cell_mat_a: weight_mat_a += weight_b
 	elif tex_b == cell_mat_b: weight_mat_b += weight_b
+	elif tex_b == cell_mat_c: weight_mat_c += weight_b
+	# Corner C
 	if tex_c == cell_mat_a: weight_mat_a += weight_c
 	elif tex_c == cell_mat_b: weight_mat_b += weight_c
+	elif tex_c == cell_mat_c: weight_mat_c += weight_c
+	# Corner D
 	if tex_d == cell_mat_a: weight_mat_a += weight_d
 	elif tex_d == cell_mat_b: weight_mat_b += weight_d
-	
-	var total_weight : float = weight_mat_a + weight_mat_b
-	var blend_weight : float = 0.0
+	elif tex_d == cell_mat_c: weight_mat_c += weight_d
+
+	# Normalize weights
+	var total_weight : float = weight_mat_a + weight_mat_b + weight_mat_c
 	if total_weight > 0.001:
-		blend_weight = weight_mat_b / total_weight
-	
-	return Color(float(cell_mat_a) / 15.0, float(cell_mat_b) / 15.0, blend_weight, 0.0)
+		weight_mat_a /= total_weight
+		weight_mat_b /= total_weight
+		# weight_mat_c = 1 - weight_mat_a - weight_mat_b (computed in shader)
+
+	# Pack mat_a and mat_b into one channel (each is 0-15, so together 0-255)
+	var packed_mats : float = (float(cell_mat_a) + float(cell_mat_b) * 16.0) / 255.0
+
+	return Color(packed_mats, float(cell_mat_c) / 15.0, weight_mat_a, weight_mat_b)
 
 
 # If true, currently making floor geometry. if false, currently making wall geometry.
