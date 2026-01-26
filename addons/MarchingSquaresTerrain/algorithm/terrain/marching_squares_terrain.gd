@@ -39,36 +39,26 @@ class_name MarchingSquaresTerrain
 				grass_mat.set_shader_parameter("use_base_color", true)
 			for chunk: MarchingSquaresTerrainChunk in chunks.values():
 				chunk.grass_planter.regenerate_all_cells()
+# Legacy wall texture properties - kept for backward compatibility with existing scenes
+# These are no-ops: the unified 16-texture system is now used for both ground and walls
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_texture : Texture2D = preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/wall_noise_texture.res"):
 	set(value):
-		wall_texture = value
-		if not is_batch_updating:
-			terrain_material.set_shader_parameter("wall_tex_1", value)
+		wall_texture = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_texture_2 : Texture2D = preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/wall_noise_texture.res"):
 	set(value):
-		wall_texture_2 = value
-		if not is_batch_updating:
-						terrain_material.set_shader_parameter("wall_tex_2", value)
+		wall_texture_2 = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_texture_3 : Texture2D = preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/wall_noise_texture.res"):
 	set(value):
-		wall_texture_3 = value
-		if not is_batch_updating:
-			terrain_material.set_shader_parameter("wall_tex_3", value)
+		wall_texture_3 = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_texture_4 : Texture2D = preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/wall_noise_texture.res"):
 	set(value):
-		wall_texture_4 = value
-		if not is_batch_updating:
-			terrain_material.set_shader_parameter("wall_tex_4", value)
+		wall_texture_4 = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_texture_5 : Texture2D = preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/wall_noise_texture.res"):
 	set(value):
-		wall_texture_5 = value
-		if not is_batch_updating:
-			terrain_material.set_shader_parameter("wall_tex_5", value)
+		wall_texture_5 = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_texture_6 : Texture2D = preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/wall_noise_texture.res"):
 	set(value):
-		wall_texture_6 = value
-		if not is_batch_updating:	
-			terrain_material.set_shader_parameter("wall_tex_6", value)
+		wall_texture_6 = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var ground_color : Color = Color("647851ff"):
 	set(value):
 		ground_color = value
@@ -76,36 +66,26 @@ class_name MarchingSquaresTerrain
 			terrain_material.set_shader_parameter("ground_albedo", value)
 			var grass_mat := grass_mesh.material as ShaderMaterial
 			grass_mat.set_shader_parameter("grass_base_color", value)
+# Legacy wall color properties - kept for backward compatibility with existing scenes
+# These are no-ops: walls now use the same color tinting as ground textures via the unified system
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color : Color = Color("5e5645ff"):
 	set(value):
-		wall_color = value
-		if not is_batch_updating:
-			terrain_material.set_shader_parameter("wall_albedo", value)
+		wall_color = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color_2 : Color = Color("665950ff"):
 	set(value):
-		wall_color_2 = value
-		if not is_batch_updating:
-			terrain_material.set_shader_parameter("wall_albedo_2", value)
+		wall_color_2 = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color_3 : Color = Color("595240ff"):
 	set(value):
-		wall_color_3 = value
-		if not is_batch_updating:
-			terrain_material.set_shader_parameter("wall_albedo_3", value)
+		wall_color_3 = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color_4 : Color = Color("615745ff"):
 	set(value):
-		wall_color_4 = value
-		if not is_batch_updating:
-			terrain_material.set_shader_parameter("wall_albedo_4", value)
+		wall_color_4 = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color_5 : Color = Color("5c5442ff"):
 	set(value):
-		wall_color_5 = value
-		if not is_batch_updating:
-			terrain_material.set_shader_parameter("wall_albedo_5", value)
+		wall_color_5 = value  # Store for persistence only - no shader effect
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color_6 : Color = Color("6b614cff"):
 	set(value):
-		wall_color_6 = value
-		if not is_batch_updating:
-			terrain_material.set_shader_parameter("wall_albedo_6", value)
+		wall_color_6 = value  # Store for persistence only - no shader effect
 
 # Base grass settings
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var grass_sprite : CompressedTexture2D = preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/grass_leaf_sprite.png"):
@@ -641,31 +621,15 @@ func force_batch_update() -> void:
 	terrain_material.set_shader_parameter("vc_tex_ar", texture_13)
 	terrain_material.set_shader_parameter("vc_tex_ag", texture_14)
 	terrain_material.set_shader_parameter("vc_tex_ab", texture_15)
-	
-	# TERRAIN MATERIAL - Wall Textures
-	terrain_material.set_shader_parameter("wall_tex_1", wall_texture)
-	terrain_material.set_shader_parameter("wall_tex_2", wall_texture_2)
-	terrain_material.set_shader_parameter("wall_tex_3", wall_texture_3)
-	terrain_material.set_shader_parameter("wall_tex_4", wall_texture_4)
-	terrain_material.set_shader_parameter("wall_tex_5", wall_texture_5)
-	terrain_material.set_shader_parameter("wall_tex_6", wall_texture_6)
-	
-	# TERRAIN MATERIAL - Ground Colors
+
+	# TERRAIN MATERIAL - Ground Colors (used for both floor and wall in unified system)
 	terrain_material.set_shader_parameter("ground_albedo", ground_color)
 	terrain_material.set_shader_parameter("ground_albedo_2", ground_color_2)
 	terrain_material.set_shader_parameter("ground_albedo_3", ground_color_3)
 	terrain_material.set_shader_parameter("ground_albedo_4", ground_color_4)
 	terrain_material.set_shader_parameter("ground_albedo_5", ground_color_5)
 	terrain_material.set_shader_parameter("ground_albedo_6", ground_color_6)
-	
-	# TERRAIN MATERIAL - Wall Colors
-	terrain_material.set_shader_parameter("wall_albedo", wall_color)
-	terrain_material.set_shader_parameter("wall_albedo_2", wall_color_2)
-	terrain_material.set_shader_parameter("wall_albedo_3", wall_color_3)
-	terrain_material.set_shader_parameter("wall_albedo_4", wall_color_4)
-	terrain_material.set_shader_parameter("wall_albedo_5", wall_color_5)
-	terrain_material.set_shader_parameter("wall_albedo_6", wall_color_6)
-	
+
 	# TERRAIN MATERIAL - Per-Texture UV Scales
 	terrain_material.set_shader_parameter("texture_scale_1", texture_scale_1)
 	terrain_material.set_shader_parameter("texture_scale_2", texture_scale_2)
@@ -759,25 +723,9 @@ func save_to_preset() -> void:
 	current_terrain_preset.new_textures.grass_colors[4] = ground_color_5
 	current_terrain_preset.new_textures.grass_colors[5] = ground_color_6
 	
-	# Has grass flags 
+	# Has grass flags
 	current_terrain_preset.new_textures.has_grass[0] = tex2_has_grass
 	current_terrain_preset.new_textures.has_grass[1] = tex3_has_grass
 	current_terrain_preset.new_textures.has_grass[2] = tex4_has_grass
 	current_terrain_preset.new_textures.has_grass[3] = tex5_has_grass
 	current_terrain_preset.new_textures.has_grass[4] = tex6_has_grass
-	
-	# Wall textures 
-	current_terrain_preset.new_textures.wall_textures[0] = wall_texture
-	current_terrain_preset.new_textures.wall_textures[1] = wall_texture_2
-	current_terrain_preset.new_textures.wall_textures[2] = wall_texture_3
-	current_terrain_preset.new_textures.wall_textures[3] = wall_texture_4
-	current_terrain_preset.new_textures.wall_textures[4] = wall_texture_5
-	current_terrain_preset.new_textures.wall_textures[5] = wall_texture_6
-	
-	# Wall colors 
-	current_terrain_preset.new_textures.wall_colors[0] = wall_color
-	current_terrain_preset.new_textures.wall_colors[1] = wall_color_2
-	current_terrain_preset.new_textures.wall_colors[2] = wall_color_3
-	current_terrain_preset.new_textures.wall_colors[3] = wall_color_4
-	current_terrain_preset.new_textures.wall_colors[4] = wall_color_5
-	current_terrain_preset.new_textures.wall_colors[5] = wall_color_6

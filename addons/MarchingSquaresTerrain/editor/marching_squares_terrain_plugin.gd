@@ -905,9 +905,9 @@ func _set_new_textures(_preset: MarchingSquaresTexturePreset) -> void:
 	# Set BatchUpdate flag to avoid indivudal setters triggering updates
 	current_terrain_node.is_batch_updating = true
 	
-	for i in range(6): # The range is 6 because MarchingSquaresTextureList currently has 6 export variables
+	for i in range(4): # The range is 4 because MarchingSquaresTextureList has 4 export variables (floor, grass sprites, grass colors, has_grass)
 		match i:
-			0: # floor_textures
+			0: # floor_textures (unified for both floor and wall painting)
 				for i_floor_tex in range(_preset.new_textures.floor_textures.size()):
 					var tex : Texture2D = _preset.new_textures.floor_textures[i_floor_tex]
 					if tex == null:
@@ -941,7 +941,7 @@ func _set_new_textures(_preset: MarchingSquaresTexturePreset) -> void:
 							current_terrain_node.texture_13 = tex
 						13:
 							current_terrain_node.texture_14 = tex
-						14: #Are we not adding 14 cause texture_15 is used for VOID? -> COMMENT (YUGEN): yes, void should stay void in all scenarios
+						14: # texture_15 is reserved for VOID
 							current_terrain_node.texture_15 = tex
 			1: # grass_sprites
 				for i_grass_tex in range(_preset.new_textures.grass_sprites.size()):
@@ -993,43 +993,8 @@ func _set_new_textures(_preset: MarchingSquaresTexturePreset) -> void:
 							current_terrain_node.tex5_has_grass = val
 						4:
 							current_terrain_node.tex6_has_grass = val
-			4: # wall_textures
-				for i_wall_tex in range(_preset.new_textures.wall_textures.size()):
-					var tex : Texture2D = _preset.new_textures.wall_textures[i_wall_tex]
-					if tex == null:
-						continue
-					match i_wall_tex:
-						0:
-							current_terrain_node.wall_texture = tex
-						1:
-							current_terrain_node.wall_texture_2 = tex
-						2:
-							current_terrain_node.wall_texture_3 = tex
-						3:
-							current_terrain_node.wall_texture_4 = tex
-						4:
-							current_terrain_node.wall_texture_5 = tex
-						5:
-							current_terrain_node.wall_texture_6 = tex
-			5: # wall_colors
-				for i_wall_col in range(_preset.new_textures.wall_colors.size()):
-					var col : Color = _preset.new_textures.wall_colors[i_wall_col]
-					match i_wall_col:
-						0:
-							current_terrain_node.wall_color = col
-						1:
-							current_terrain_node.wall_color_2 = col
-						2:
-							current_terrain_node.wall_color_3 = col
-						3:
-							current_terrain_node.wall_color_4 = col
-						4:
-							current_terrain_node.wall_color_5 = col
-						5:
-							current_terrain_node.wall_color_6 = col
-	
+
 	vp_texture_names.floor_texture_names = _preset.new_tex_names.floor_texture_names
-	vp_texture_names.wall_texture_names = _preset.new_tex_names.wall_texture_names
 	
 	# Apply a batch update
 	current_terrain_node.force_batch_update()

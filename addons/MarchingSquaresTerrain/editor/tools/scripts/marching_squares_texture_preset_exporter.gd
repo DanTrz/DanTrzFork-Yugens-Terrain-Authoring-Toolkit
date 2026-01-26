@@ -109,7 +109,7 @@ func _get_current_texture_data() -> MarchingSquaresTextureList:
 	var new_texture_list := MarchingSquaresTextureList.new()
 	var current_terrain_node : MarchingSquaresTerrain = get_parent().get_parent().plugin.current_terrain_node #There has to be a better way to do this but this works for now
 	
-	for i in range(6): # The range is 6 because MarchingSquaresTextureList currently has 6 export variables
+	for i in range(4): # The range is 4 because MarchingSquaresTextureList has 4 export variables (floor, grass sprites, grass colors, has_grass)
 		match i:
 			0: # floor_textures
 				for i_floor_tex in range(new_texture_list.floor_textures.size()):
@@ -199,41 +199,5 @@ func _get_current_texture_data() -> MarchingSquaresTextureList:
 							val = current_terrain_node.tex6_has_grass
 					if val != null:
 						new_texture_list.has_grass[i_has_grass] = val
-			4: # wall_textures
-				for i_wall_text in range(new_texture_list.wall_textures.size()):
-					var tex : Texture2D
-					match i_wall_text:
-						0:
-							tex = current_terrain_node.wall_texture
-						1:
-							tex = current_terrain_node.wall_texture_2
-						2:
-							tex = current_terrain_node.wall_texture_3
-						3:
-							tex = current_terrain_node.wall_texture_4
-						4:
-							tex = current_terrain_node.wall_texture_5
-						5:
-							tex = current_terrain_node.wall_texture_6
-					if tex != null:
-						new_texture_list.wall_textures[i_wall_text] = tex
-			5: # wall_colors
-				for i_wall_col in range(new_texture_list.wall_colors.size()):
-					var col : Color
-					match i_wall_col:
-						0:
-							col = current_terrain_node.wall_color
-						1:
-							col = current_terrain_node.wall_color_2
-						2:
-							col = current_terrain_node.wall_color_3
-						3:
-							col = current_terrain_node.wall_color_4
-						4:
-							col = current_terrain_node.wall_color_5
-						5:
-							col = current_terrain_node.wall_color_6
-					if col != null:
-						new_texture_list.wall_colors[i_wall_col] = col
-	
+
 	return new_texture_list

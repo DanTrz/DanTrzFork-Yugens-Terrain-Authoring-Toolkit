@@ -11,21 +11,6 @@ uniform vec4 ground_albedo_3 : source_color = vec4(0.373, 0.424, 0.294, 1.0);
 uniform vec4 ground_albedo_4 : source_color = vec4(0.392, 0.475, 0.255, 1.0);
 uniform vec4 ground_albedo_5 : source_color = vec4(0.29, 0.494, 0.365, 1.0);
 uniform vec4 ground_albedo_6 : source_color = vec4(0.443, 0.447, 0.365, 1.0);
-uniform vec4 wall_albedo : source_color = vec4(0.369, 0.337, 0.271, 1.0);
-uniform vec4 wall_albedo_2 : source_color = vec4(0.4, 0.35, 0.28, 1.0);
-uniform vec4 wall_albedo_3 : source_color = vec4(0.35, 0.32, 0.25, 1.0);
-uniform vec4 wall_albedo_4 : source_color = vec4(0.38, 0.34, 0.27, 1.0);
-uniform vec4 wall_albedo_5 : source_color = vec4(0.36, 0.33, 0.26, 1.0);
-uniform vec4 wall_albedo_6 : source_color = vec4(0.42, 0.38, 0.30, 1.0);
-group_uniforms;
-
-group_uniforms Wall_Textures;
-uniform sampler2D wall_tex_1 : source_color, repeat_enable, filter_nearest;
-uniform sampler2D wall_tex_2 : source_color, repeat_enable, filter_nearest;
-uniform sampler2D wall_tex_3 : source_color, repeat_enable, filter_nearest;
-uniform sampler2D wall_tex_4 : source_color, repeat_enable, filter_nearest;
-uniform sampler2D wall_tex_5 : source_color, repeat_enable, filter_nearest;
-uniform sampler2D wall_tex_6 : source_color, repeat_enable, filter_nearest;
 group_uniforms;
 
 group_uniforms Blending;

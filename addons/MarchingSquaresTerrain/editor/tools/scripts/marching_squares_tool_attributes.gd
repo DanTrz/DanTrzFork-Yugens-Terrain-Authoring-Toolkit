@@ -26,8 +26,6 @@ var terrain_settings_data : Dictionary = {
 	"cell_size": "Vector2",
 	"use_hard_textures": "CheckBox",
 	"noise_hmap": "EditorResourcePicker",
-	"wall_texture": "EditorResourcePicker",
-	"wall_color": "ColorPickerButton",
 	# Grass settings
 	"animation_fps": "SpinBox",
 	"grass_subdivisions": "SpinBox",

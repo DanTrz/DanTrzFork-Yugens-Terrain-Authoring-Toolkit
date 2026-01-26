@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="MarchingSquaresTexturePreset" load_steps=21 format=3 uid="uid://orvvwqol311t"]
+[gd_resource type="Resource" script_class="MarchingSquaresTexturePreset" load_steps=20 format=3 uid="uid://orvvwqol311t"]
 
 [ext_resource type="Script" uid="uid://dqeuj3gddfm65" path="res://addons/MarchingSquaresTerrain/editor/tools/scripts/marching_squares_texture_names.gd" id="1_vegri"]
 [ext_resource type="Texture2D" uid="uid://dbnc04k3n0sro" path="res://addons/MarchingSquaresTerrain/resources/plugin materials/grass_terrain_noise.res" id="2_v8enj"]
@@ -13,7 +13,6 @@
 [ext_resource type="Texture2D" uid="uid://drx2jv4ifooke" path="res://addons/MarchingSquaresTerrain/resources/user textures/Soil_1.png" id="11_jkmme"]
 [ext_resource type="Texture2D" uid="uid://cxvnfgy865wsk" path="res://addons/MarchingSquaresTerrain/resources/plugin materials/grass_leaf_sprite.png" id="12_byuk0"]
 [ext_resource type="Script" uid="uid://c5yuywww81uee" path="res://addons/MarchingSquaresTerrain/editor/tools/scripts/marching_squares_texture_list.gd" id="13_78ja2"]
-[ext_resource type="Texture2D" uid="uid://cv87twjgbqq0s" path="res://addons/MarchingSquaresTerrain/resources/plugin materials/wall_noise_texture.res" id="14_dqg4y"]
 [ext_resource type="Script" uid="uid://fvb3vi413siv" path="res://addons/MarchingSquaresTerrain/editor/tools/scripts/marching_squares_texture_preset.gd" id="15_0hfrj"]
 [ext_resource type="Script" uid="uid://mtlf02qfkqp5" path="res://addons/MarchingSquaresTerrain/editor/tools/scripts/marching_squares_quick_paint.gd" id="15_v8enj"]
 [ext_resource type="Resource" uid="uid://btiw10gr4acth" path="res://addons/MarchingSquaresTerrain/resources/quick paints/example_forest_paint.tres" id="17_3q4hf"]
@@ -27,7 +26,6 @@ script = ExtResource("13_78ja2")
 floor_textures = Array[Texture2D]([ExtResource("2_v8enj"), ExtResource("2_v8enj"), ExtResource("2_v8enj"), ExtResource("2_v8enj"), ExtResource("2_v8enj"), ExtResource("2_v8enj"), ExtResource("3_6n8j1"), ExtResource("4_556ip"), ExtResource("5_313w4"), ExtResource("6_3q4hf"), ExtResource("7_untgd"), ExtResource("8_ljhqj"), ExtResource("9_2mioc"), ExtResource("10_cj5il"), ExtResource("11_jkmme")])
 grass_colors = Array[Color]([Color(0.65882355, 0.9394608, 0.972549, 1), Color(0.27218676, 0.5515594, 0.8732414, 1), Color(0.11707836, 0.34160534, 0.58870035, 1), Color(0.07107241, 0.24152821, 0.4282803, 1), Color(0.20849088, 0.73309654, 0.8678708, 1), Color(0.41363853, 0.42448938, 0.85011166, 1)])
 has_grass = Array[bool]([false, true, false, true, true])
-wall_colors = Array[Color]([Color(0.46945179, 0.7010036, 0.2856275, 1), Color(0.33949488, 0.9032855, 0.5586483, 1), Color(0.335122, 0.6167051, 0.50770515, 1), Color(0.43137255, 0.7372549, 0.23921569, 1), Color(5.053729e-07, 0.5423809, 0.052414887, 1), Color(0.1628919, 0.39505482, 0.32660258, 1)])
 
 [resource]
 script = ExtResource("15_0hfrj")
