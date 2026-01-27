@@ -26,6 +26,8 @@ var terrain_settings_data : Dictionary = {
 	"cell_size": "Vector2",
 	"use_hard_textures": "CheckBox",
 	"noise_hmap": "EditorResourcePicker",
+	# Default wall texture slot
+	"default_wall_texture_slot": "WallDropdown",
 	# Grass settings
 	"animation_fps": "SpinBox",
 	"grass_subdivisions": "SpinBox",
@@ -464,13 +466,29 @@ func add_setting(p_params: Dictionary) -> void:
 					"CheckBox":
 						var checkbox := CheckBox.new()
 						checkbox.set_flat(true)
-						checkbox.button_pressed = plugin.current_terrain_node.use_ridge_texture
+						checkbox.button_pressed = plugin.current_terrain_node.get(setting)
 						checkbox.toggled.connect(func(pressed): _on_terrain_setting_changed(setting, pressed))
 						checkbox.set_custom_minimum_size(Vector2(25, 25))
-						
+
 						ts_cont = CenterContainer.new()
 						ts_cont.set_custom_minimum_size(Vector2(35, 35))
 						ts_cont.add_child(checkbox, true)
+						hbox.add_child(ts_cont, true)
+						vbox.add_child(hbox, true)
+					"WallDropdown":
+						var wall_dropdown := OptionButton.new()
+						wall_dropdown.set_flat(true)
+						# Populate with texture names from the shared texture names resource
+						for tex_name in attribute_list.vp_tex_names.floor_texture_names:
+							wall_dropdown.add_item(tex_name)
+						# Set current selection from terrain node
+						wall_dropdown.selected = plugin.current_terrain_node.default_wall_texture_slot
+						wall_dropdown.item_selected.connect(func(index): _on_terrain_setting_changed(setting, index))
+						wall_dropdown.set_custom_minimum_size(Vector2(100, 35))
+
+						ts_cont = CenterContainer.new()
+						ts_cont.set_custom_minimum_size(Vector2(100, 35))
+						ts_cont.add_child(wall_dropdown, true)
 						hbox.add_child(ts_cont, true)
 						vbox.add_child(hbox, true)
 				if vbox.get_child_count() % 3 == 0:

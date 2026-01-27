@@ -634,11 +634,7 @@ func draw_pattern(terrain: MarchingSquaresTerrain):
 		# Handle BRUSH, LEVEL, SMOOTH, BRIDGE modes
 		if current_quick_paint:
 			# QUICK PAINT MODE: Apply all changes as ONE atomic undo/redo action
-			# This fixes the issue where 6 separate actions are created per brush stroke
-			
-			# Build wall color patterns with expansion to adjacent cells
-			# Wall colors must be applied to adjacent cells because wall mesh vertices
-			# use corner colors from neighboring cells (lower wall portion = lower corner)
+			# This fixes the issue where 6 separate actions are 
 			_set_vertex_colors(current_quick_paint.wall_texture_slot)
 
 			var wall_color_pattern := {}
@@ -768,10 +764,89 @@ func draw_pattern(terrain: MarchingSquaresTerrain):
 			undo_redo.add_undo_method(self, "apply_composite_pattern_action", terrain, undo_patterns)
 			undo_redo.commit_action()
 		else:
-			# NON-QUICK PAINT MODE: Height-only action (unchanged behavior)
+			# NON-QUICK PAINT MODE: Apply height + default wall texture
+			# Use the terrain's default_wall_texture_slot for wall colors
+			_set_vertex_colors(terrain.default_wall_texture_slot)
+
+			var wall_color_pattern := {}
+			var wall_color_pattern_cc := {}
+			var wall_color_restore := {}
+			var wall_color_restore_cc := {}
+
+			# First pass: collect all cells in the pattern
+			for chunk_coords in pattern:
+				wall_color_pattern[chunk_coords] = {}
+				wall_color_pattern_cc[chunk_coords] = {}
+				wall_color_restore[chunk_coords] = {}
+				wall_color_restore_cc[chunk_coords] = {}
+				var chunk : MarchingSquaresTerrainChunk = terrain.chunks[chunk_coords]
+				for cell_coords in pattern[chunk_coords]:
+					wall_color_restore[chunk_coords][cell_coords] = chunk.get_wall_color_0(cell_coords)
+					wall_color_restore_cc[chunk_coords][cell_coords] = chunk.get_wall_color_1(cell_coords)
+					wall_color_pattern[chunk_coords][cell_coords] = vertex_color_0
+					wall_color_pattern_cc[chunk_coords][cell_coords] = vertex_color_1
+
+			# Second pass: expand to adjacent cells (walls appear at boundaries between cells)
+			for chunk_coords in pattern:
+				for cell_coords in pattern[chunk_coords]:
+					for dx in range(-1, 2):
+						for dz in range(-1, 2):
+							if dx == 0 and dz == 0:
+								continue
+
+							var adj_x : int = cell_coords.x + dx
+							var adj_z : int = cell_coords.y + dz
+							var adj_chunk_coords : Vector2i = chunk_coords
+
+							if adj_x < 0:
+								adj_chunk_coords = Vector2i(chunk_coords.x - 1, chunk_coords.y)
+								adj_x = terrain.dimensions.x - 1
+							elif adj_x >= terrain.dimensions.x:
+								adj_chunk_coords = Vector2i(chunk_coords.x + 1, chunk_coords.y)
+								adj_x = 0
+
+							if adj_z < 0:
+								adj_chunk_coords = Vector2i(adj_chunk_coords.x, chunk_coords.y - 1)
+								adj_z = terrain.dimensions.z - 1
+							elif adj_z >= terrain.dimensions.z:
+								adj_chunk_coords = Vector2i(adj_chunk_coords.x, chunk_coords.y + 1)
+								adj_z = 0
+
+							if not terrain.chunks.has(adj_chunk_coords):
+								continue
+
+							var adj_cell := Vector2i(adj_x, adj_z)
+
+							if wall_color_pattern.has(adj_chunk_coords) and wall_color_pattern[adj_chunk_coords].has(adj_cell):
+								continue
+
+							if not wall_color_pattern.has(adj_chunk_coords):
+								wall_color_pattern[adj_chunk_coords] = {}
+								wall_color_pattern_cc[adj_chunk_coords] = {}
+								wall_color_restore[adj_chunk_coords] = {}
+								wall_color_restore_cc[adj_chunk_coords] = {}
+
+							var adj_chunk : MarchingSquaresTerrainChunk = terrain.chunks[adj_chunk_coords]
+							wall_color_restore[adj_chunk_coords][adj_cell] = adj_chunk.get_wall_color_0(adj_cell)
+							wall_color_restore_cc[adj_chunk_coords][adj_cell] = adj_chunk.get_wall_color_1(adj_cell)
+							wall_color_pattern[adj_chunk_coords][adj_cell] = vertex_color_0
+							wall_color_pattern_cc[adj_chunk_coords][adj_cell] = vertex_color_1
+
+			# Create composite action with height + wall colors
+			var do_patterns := {
+				"height": pattern,
+				"wall_color_0": wall_color_pattern,
+				"wall_color_1": wall_color_pattern_cc
+			}
+			var undo_patterns := {
+				"height": restore_pattern,
+				"wall_color_0": wall_color_restore,
+				"wall_color_1": wall_color_restore_cc
+			}
+
 			undo_redo.create_action("terrain height draw")
-			undo_redo.add_do_method(self, "draw_height_pattern_action", terrain, pattern)
-			undo_redo.add_undo_method(self, "draw_height_pattern_action", terrain, restore_pattern)
+			undo_redo.add_do_method(self, "apply_composite_pattern_action", terrain, do_patterns)
+			undo_redo.add_undo_method(self, "apply_composite_pattern_action", terrain, undo_patterns)
 			undo_redo.commit_action()
 
 
@@ -836,9 +911,7 @@ func draw_wall_color_1_pattern_action(terrain: MarchingSquaresTerrain, pattern: 
 		chunk.regenerate_mesh()
 
 
-# Applies all terrain patterns atomically (for quick paint brush and vertex painting operations)
-# Patterns dict keys: "height", "wall_color_0", "wall_color_1", "grass_mask", "color_0", "color_1"
-# This consolidates multiple data changes into ONE undo/redo action with ONE mesh regeneration
+# Applies all terrain patterns  (for quick paint brush and vertex painting operations)
 func apply_composite_pattern_action(terrain: MarchingSquaresTerrain, patterns: Dictionary) -> void:
 	var affected_chunks : Dictionary = {}  # chunk_coords -> chunk reference
 	

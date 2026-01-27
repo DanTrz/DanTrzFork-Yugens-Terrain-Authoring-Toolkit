@@ -431,6 +431,10 @@ class_name MarchingSquaresTerrain
 
 @export_storage var current_terrain_preset: MarchingSquaresTexturePreset = null
 
+# Default wall texture slot (0-15) used when no quick paint is active
+# Default is 5 (Texture 6 in 1-indexed UI terms)
+@export_storage var default_wall_texture_slot: int = 5
+
 var void_texture := preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/void_texture.tres")
 var placeholder_wind_texture := preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/wind_noise_texture.tres") # Change to your own texture
 
