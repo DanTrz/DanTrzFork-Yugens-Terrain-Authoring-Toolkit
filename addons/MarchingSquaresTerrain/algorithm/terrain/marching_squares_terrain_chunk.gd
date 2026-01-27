@@ -2,6 +2,7 @@
 extends MeshInstance3D
 class_name MarchingSquaresTerrainChunk
 
+const ChunkData = preload("res://addons/MarchingSquaresTerrain/resources/marching_squares_chunk_data.gd")
 
 enum Mode {CUBIC, POLYHEDRON, ROUNDED_POLYHEDRON, SEMI_ROUND, SPHERICAL}
 
@@ -24,20 +25,23 @@ const BLEND_EDGE_SENSITIVITY : float = 1.25
 	set(mode):
 		merge_mode = mode
 		if is_inside_tree():
-			#Believe this might fix the Grass Color bug (part 1)
-			var grass_mat :ShaderMaterial= grass_planter.multimesh.mesh.material as ShaderMaterial
-			if mode == Mode.SEMI_ROUND or Mode.SPHERICAL:
-				grass_mat.set_shader_parameter("is_merge_round", true)
-			else:
-				grass_mat.set_shader_parameter("is_merge_round", false)
+			# Guard against null grass_planter or uninitialized multimesh during scene loading
+			if grass_planter and grass_planter.multimesh and grass_planter.multimesh.mesh and grass_planter.multimesh.mesh.material:
+				var grass_mat := grass_planter.multimesh.mesh.material as ShaderMaterial
+				if mode == Mode.SEMI_ROUND or mode == Mode.SPHERICAL:
+					grass_mat.set_shader_parameter("is_merge_round", true)
+				else:
+					grass_mat.set_shader_parameter("is_merge_round", false)
 			merge_threshold = MERGE_MODE[mode]
 			regenerate_all_cells()
-@export_storage var height_map : Array # Stores the heights from the heightmap
-@export_storage var color_map_0 : PackedColorArray # Stores the colors from vertex_color_0 (ground)
-@export_storage var color_map_1 : PackedColorArray # Stores the colors from vertex_color_1 (ground)
-@export_storage var wall_color_map_0 : PackedColorArray # Stores the colors for wall vertices (slot encoding channel 0)
-@export_storage var wall_color_map_1 : PackedColorArray # Stores the colors for wall vertices (slot encoding channel 1)
-@export_storage var grass_mask_map : PackedColorArray # Stores if a cell should have grass or not
+# Chunk data arrays - stored externally via MarchingSquaresChunkData, NOT embedded in scene
+# These are runtime-only variables that get populated from external .res files on load
+var height_map : Array # Stores the heights from the heightmap
+var color_map_0 : PackedColorArray # Stores the colors from vertex_color_0 (ground)
+var color_map_1 : PackedColorArray # Stores the colors from vertex_color_1 (ground)
+var wall_color_map_0 : PackedColorArray # Stores the colors for wall vertices (slot encoding channel 0)
+var wall_color_map_1 : PackedColorArray # Stores the colors for wall vertices (slot encoding channel 1)
+var grass_mask_map : PackedColorArray # Stores if a cell should have grass or not
 
 var merge_threshold : float = MERGE_MODE[Mode.POLYHEDRON]
 
@@ -94,6 +98,7 @@ var cd : bool
 
 var needs_update : Array[Array] # Stores which tiles need to be updated because one of their corners' heights was changed.
 var _skip_save_on_exit : bool = false # Set to true when chunk is removed temporarily (undo/redo)
+var _data_dirty : bool = false # Set to true when chunk data needs saving to external file
 
 # Terrain blend options to allow for smooth color and height blend influence at transitions and at different heights 
 var lower_thresh : float = 0.3 # Sharp bands: < 0.3 = lower color
@@ -141,14 +146,8 @@ func _exit_tree() -> void:
 	# (avoids double-erasure when remove_chunk_from_tree already erased it)
 	if terrain_system and terrain_system.chunks.get(chunk_coords) == self:
 		terrain_system.chunks.erase(chunk_coords)
-	
-	# Only save mesh if not being removed temporarily (undo/redo)
-	if not _skip_save_on_exit:
-		# Guard get_tree() - can be null during multi-scene transitions
-		var tree = get_tree()
-		if tree and tree.current_scene and Engine.is_editor_hint():
-			var scene = tree.current_scene
-			ResourceSaver.save(mesh, "res://"+scene.name+"/"+name+".tres", ResourceSaver.FLAG_COMPRESS)
+	# NOTE: Mesh saving is now handled by MarchingSquaresTerrain._notification(NOTIFICATION_EDITOR_PRE_SAVE)
+	# via the external chunk data storage system. No per-chunk save needed here.
 
 
 func regenerate_mesh():
@@ -188,7 +187,11 @@ func regenerate_mesh():
 	st.index()
 	# Create a new mesh out of floor, and add the wall surface to it
 	mesh = st.commit()
-	
+
+	# Mark chunk as dirty so it gets saved externally on next scene save
+	# This ensures terrain edits trigger external storage sync
+	_data_dirty = true
+
 	if mesh and terrain_system:
 		mesh.surface_set_material(0, terrain_system.terrain_material)
 	
@@ -1304,8 +1307,120 @@ func notify_needs_update(z: int, x: int):
 
 
 func regenerate_all_cells():
+	# Guard against uninitialized needs_update array (can happen during external data loading)
+	if needs_update.is_empty():
+		return  # Will be called again after initialize_terrain()
+
 	for z in range(dimensions.z-1):
 		for x in range(dimensions.x-1):
 			needs_update[z][x] = true
-			
+
 	regenerate_mesh()
+
+
+## Convert chunk state to MarchingSquaresChunkData for external storage
+func to_chunk_data() -> ChunkData:
+	var data := ChunkData.new()
+	data.chunk_coords = chunk_coords
+	data.merge_mode = merge_mode
+
+	# Source data (deep copy for arrays)
+	data.height_map = height_map.duplicate(true)
+	data.color_map_0 = color_map_0.duplicate()
+	data.color_map_1 = color_map_1.duplicate()
+	data.wall_color_map_0 = wall_color_map_0.duplicate()
+	data.wall_color_map_1 = wall_color_map_1.duplicate()
+	data.grass_mask_map = grass_mask_map.duplicate()
+
+	# Generated data
+	data.mesh = mesh
+
+	# Extract collision shape faces
+	for child in get_children():
+		if child is StaticBody3D:
+			for shape_child in child.get_children():
+				if shape_child is CollisionShape3D and shape_child.shape is ConcavePolygonShape3D:
+					data.set_collision_from_shape(shape_child.shape)
+					break
+
+	# Grass multimesh
+	if grass_planter and grass_planter.multimesh:
+		data.grass_multimesh = grass_planter.multimesh
+
+	# Cell geometry cache (optional - can be regenerated)
+	data.cell_geometry = cell_geometry.duplicate(true)
+
+	return data
+
+
+## Restore chunk state from MarchingSquaresChunkData (loaded from external file)
+func from_chunk_data(data: ChunkData) -> void:
+	if not data:
+		printerr("ERROR: from_chunk_data called with null data")
+		return
+
+	chunk_coords = data.chunk_coords
+	merge_mode = data.merge_mode
+
+	# Source data
+	height_map = data.height_map.duplicate(true)
+	color_map_0 = data.color_map_0.duplicate()
+	color_map_1 = data.color_map_1.duplicate()
+	wall_color_map_0 = data.wall_color_map_0.duplicate()
+	wall_color_map_1 = data.wall_color_map_1.duplicate()
+	grass_mask_map = data.grass_mask_map.duplicate()
+
+	# Cell geometry cache
+	if not data.cell_geometry.is_empty():
+		cell_geometry = data.cell_geometry.duplicate(true)
+
+	# Apply mesh (loaded from external file)
+	if data.mesh:
+		mesh = data.mesh
+		if mesh and terrain_system:
+			mesh.surface_set_material(0, terrain_system.terrain_material)
+
+	# Apply collision
+	var collision_shape : ConcavePolygonShape3D = data.get_collision_shape()
+	if collision_shape:
+		_apply_collision_shape(collision_shape)
+
+	# Apply grass multimesh
+	if data.grass_multimesh and grass_planter:
+		grass_planter.multimesh = data.grass_multimesh
+
+	_data_dirty = false
+
+
+## Get the current collision shape from this chunk (if any)
+func _get_collision_shape() -> ConcavePolygonShape3D:
+	for child in get_children():
+		if child is StaticBody3D:
+			for shape_child in child.get_children():
+				if shape_child is CollisionShape3D and shape_child.shape is ConcavePolygonShape3D:
+					return shape_child.shape
+	return null
+
+
+## Apply collision shape from external data
+func _apply_collision_shape(shape: ConcavePolygonShape3D) -> void:
+	# Remove existing collision bodies
+	for child in get_children():
+		if child is StaticBody3D:
+			child.free()
+
+	if not shape:
+		return
+
+	var body := StaticBody3D.new()
+	body.collision_layer = 17  # ground (1) + terrain (16)
+	var col_shape := CollisionShape3D.new()
+	col_shape.shape = shape
+	body.add_child(col_shape)
+	add_child(body)
+
+	# Set owner for scene persistence
+	var scene_root = EditorInterface.get_edited_scene_root() if Engine.is_editor_hint() else null
+	if scene_root:
+		body.owner = scene_root
+		col_shape.owner = scene_root

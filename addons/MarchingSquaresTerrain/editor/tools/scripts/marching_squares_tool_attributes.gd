@@ -28,6 +28,8 @@ var terrain_settings_data : Dictionary = {
 	"noise_hmap": "EditorResourcePicker",
 	# Default wall texture slot
 	"default_wall_texture_slot": "WallDropdown",
+	# External data storage
+	"data_directory": "FolderPath",
 	# Grass settings
 	"animation_fps": "SpinBox",
 	"grass_subdivisions": "SpinBox",
@@ -489,6 +491,45 @@ func add_setting(p_params: Dictionary) -> void:
 						ts_cont = CenterContainer.new()
 						ts_cont.set_custom_minimum_size(Vector2(100, 35))
 						ts_cont.add_child(wall_dropdown, true)
+						hbox.add_child(ts_cont, true)
+						vbox.add_child(hbox, true)
+					"FolderPath":
+						var folder_hbox := HBoxContainer.new()
+						folder_hbox.add_theme_constant_override("separation", 5)
+
+						var folder_edit := LineEdit.new()
+						folder_edit.set_flat(true)
+						folder_edit.placeholder_text = "(Default: SceneName_TerrainData/)"
+						var current_dir : String = plugin.current_terrain_node.get(setting)
+						if current_dir and not current_dir.is_empty():
+							folder_edit.text = current_dir
+						folder_edit.text_submitted.connect(func(text): _on_terrain_setting_changed(setting, text))
+						folder_edit.set_custom_minimum_size(Vector2(180, 25))
+						folder_hbox.add_child(folder_edit, true)
+
+						var browse_button := Button.new()
+						browse_button.text = "..."
+						browse_button.tooltip_text = "Browse for folder"
+						browse_button.set_custom_minimum_size(Vector2(30, 25))
+						browse_button.pressed.connect(func():
+							var file_dialog := EditorFileDialog.new()
+							file_dialog.file_mode = EditorFileDialog.FILE_MODE_OPEN_DIR
+							file_dialog.access = EditorFileDialog.ACCESS_RESOURCES
+							file_dialog.title = "Select Data Directory"
+							file_dialog.dir_selected.connect(func(dir):
+								folder_edit.text = dir + "/"
+								_on_terrain_setting_changed(setting, dir + "/")
+								file_dialog.queue_free()
+							)
+							file_dialog.canceled.connect(func(): file_dialog.queue_free())
+							EditorInterface.get_base_control().add_child(file_dialog)
+							file_dialog.popup_centered(Vector2i(600, 400))
+						)
+						folder_hbox.add_child(browse_button, true)
+
+						ts_cont = CenterContainer.new()
+						ts_cont.set_custom_minimum_size(Vector2(220, 35))
+						ts_cont.add_child(folder_hbox, true)
 						hbox.add_child(ts_cont, true)
 						vbox.add_child(hbox, true)
 				if vbox.get_child_count() % 3 == 0:
