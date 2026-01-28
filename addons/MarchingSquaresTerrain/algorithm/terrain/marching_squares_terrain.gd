@@ -458,10 +458,7 @@ func _enter_tree() -> void:
 
 
 func _deferred_enter_tree() -> void:
-	# Apply all persisted textures/colors to this terrain's unique shader materials
-	force_batch_update()
-
-	# Populate chunks dictionary from child nodes
+	# 1. Populate chunks dictionary FIRST
 	chunks.clear()
 	for chunk in get_children():
 		if chunk is MarchingSquaresTerrainChunk:
@@ -469,21 +466,23 @@ func _deferred_enter_tree() -> void:
 			chunk.terrain_system = self
 			chunk.grass_planter = null
 
-	# Load external chunk data (height_map, color_maps, etc.)
+	# 2. Load external chunk data SECOND 
 	if _storage_initialized:
 		MSTDataHandler.load_terrain_data(self)
 	elif Engine.is_editor_hint() and MSTDataHandler.needs_migration(self):
-		# Existing scene with embedded data - migrate to external storage
-		# Migration is EDITOR-ONLY (modifies files)
+		# Existing scene with embedded data... migrate to external storage
 		print("MarchingSquaresTerrain: Detected embedded data, will migrate on next save")
 		for chunk_coords in chunks:
 			var chunk : MarchingSquaresTerrainChunk = chunks[chunk_coords]
 			chunk._data_dirty = true
 
-	# Initialize all chunks (regenerate mesh/collision/grass from source data)
+	# 3. Initialize all chunks THIRD
 	for chunk_coords in chunks:
 		var chunk : MarchingSquaresTerrainChunk = chunks[chunk_coords]
 		chunk.initialize_terrain(true)
+
+	# 4. Apply shader parameters LAST
+	force_batch_update(true)
 
 
 func has_chunk(x: int, z: int) -> bool:
@@ -603,9 +602,9 @@ func _ensure_textures() -> void:
 		terrain_material.set_shader_parameter("vc_tex_aa", void_texture)
 	
 
-# Applies all shader parameters and regenerates grass once
+# Applies all shader parameters and optionally regenerates grass
 # Call this after setting is_batch_updating = true and changing properties
-func force_batch_update() -> void:
+func force_batch_update(skip_grass_regeneration: bool = false) -> void:
 	var grass_mat := grass_mesh.material as ShaderMaterial
 	
 	# TERRAIN MATERIAL - Core parameters
@@ -685,15 +684,17 @@ func force_batch_update() -> void:
 	grass_mat.set_shader_parameter("use_grass_tex_5", tex5_has_grass)
 	grass_mat.set_shader_parameter("use_grass_tex_6", tex6_has_grass)
 	
-	for chunk: MarchingSquaresTerrainChunk in chunks.values():
-		chunk.grass_planter.regenerate_all_cells()
+	# Only regenerate grass during parameter updates, NOT during initial load
+	# (initialize_terrain() already handles grass regeneration during load)
+	if not skip_grass_regeneration:
+		for chunk: MarchingSquaresTerrainChunk in chunks.values():
+			chunk.grass_planter.regenerate_all_cells()
 
 
 # Syncs and saves current UI texture values to the given preset resource
 # Called by marching_squares_ui.gd when saving monitoring settings changes
 func save_to_preset() -> void:
 	if current_texture_preset == null:
-		# Don't print an error here as not having a preset just means the user is making a new one
 		return
 	
 	# Terrain textures

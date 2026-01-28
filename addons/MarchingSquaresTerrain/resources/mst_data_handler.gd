@@ -213,15 +213,39 @@ static func load_chunk_from_directory(terrain: MarchingSquaresTerrain, coords: V
 		# Chunk should already exist in scene - external storage doesn't create new chunks
 		return
 
-	# Load metadata ONLY 
-	# DO NOT load mesh/collision/grass... they are ephemeral and will be regenerated
+	# Load metadata (height_map, color_maps, etc.)
 	var metadata_path := chunk_dir + "metadata.res"
 	if ResourceLoader.exists(metadata_path):
 		var data : ChunkData = load(metadata_path)
 		if data:
 			import_chunk_data(chunk, data)
 
-	print_verbose("MSTDataHandler: Loaded chunk metadata ", coords, " from ", chunk_dir)
+	# AT RUNTIME: Load pre-saved mesh/collision/grass with CACHE_MODE_IGNORE(Same pattern as Terrain3D)
+	# AT EDITOR: Skip loading - will be regenerated to avoid cache issues during save
+	if not Engine.is_editor_hint():
+		# Load mesh (no cache - faster cleanup on exit)
+		var mesh_path := chunk_dir + "mesh.res"
+		if ResourceLoader.exists(mesh_path):
+			chunk.mesh = ResourceLoader.load(mesh_path, "", ResourceLoader.CACHE_MODE_IGNORE)
+			chunk.material_override = terrain.terrain_material
+
+		# Load collision (no cache - faster cleanup on exit)
+		var collision_path := chunk_dir + "collision.res"
+		if ResourceLoader.exists(collision_path):
+			var shape : ConcavePolygonShape3D = ResourceLoader.load(collision_path, "", ResourceLoader.CACHE_MODE_IGNORE)
+			if shape:
+				apply_collision_shape(chunk, shape)
+
+		# Load grass multimesh (no cache - faster cleanup on exit)
+		var grass_path := chunk_dir + "grass_multimesh.res"
+		if ResourceLoader.exists(grass_path):
+			# Ensure grass_planter exists
+			if not chunk.grass_planter:
+				chunk.grass_planter = chunk.get_node_or_null("GrassPlanter")
+			if chunk.grass_planter:
+				chunk.grass_planter.multimesh = ResourceLoader.load(grass_path, "", ResourceLoader.CACHE_MODE_IGNORE)
+
+	print_verbose("MSTDataHandler: Loaded chunk ", coords, " from ", chunk_dir)
 
 
 ## Load a single chunk from legacy single-file format

@@ -98,9 +98,10 @@ var ac : bool
 var bd : bool
 var cd : bool
 
-var needs_update : Array[Array] # Stores which tiles need to be updated because one of their corners' heights was changed.
+var needs_update : Array[Array] # Stores which tiles need to be updated because one of their corners heights was changed.
 var _skip_save_on_exit : bool = false # Set to true when chunk is removed temporarily (undo/redo)
 var _data_dirty : bool = false # Set to true when chunk data needs saving to external file
+var _is_exiting_tree : bool = false # Set to true in _exit_tree to skip deferred callbacks during scene close
 
 # Temporary storage for resources during scene save 
 # prevents from serializing these resources into the scene file
@@ -148,12 +149,23 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 			child.collision_layer = 17 # ground (1) + terrain (16)
 
 	# Setup and regenerate grass
+	# Skip regeneration if multimesh was already loaded 
 	if grass_planter:
-		grass_planter.setup(self, true)
-		grass_planter.regenerate_all_cells()
+		var needs_grass_regeneration := true
+		if grass_planter.multimesh and grass_planter.multimesh.instance_count > 0:
+			# Grass was already loaded from external file - skip expensive regeneration
+			needs_grass_regeneration = false
+			grass_planter._chunk = self
+			grass_planter.terrain_system = terrain_system
+
+		if needs_grass_regeneration:
+			grass_planter.setup(self, true)
+			grass_planter.regenerate_all_cells()
 
 
 func _exit_tree() -> void:
+	# Mark as exiting to skip deferred callbacks (prevents physics thrashing on scene close)
+	_is_exiting_tree = true
 	# Only erase if terrain_system still has THIS chunk at chunk_coords
 	if terrain_system and terrain_system.chunks.get(chunk_coords) == self:
 		terrain_system.chunks.erase(chunk_coords)
@@ -208,6 +220,11 @@ func _notification(what: int) -> void:
 ## Recreate collision body after scene save to force physics engine refresh.
 ## Called via call_deferred() from POST_SAVE.
 func _recreate_collision_body() -> void:
+	# Skip recreation if we're exiting the scene tree (prevents physics thrashing on close)
+	if _is_exiting_tree or not is_inside_tree():
+		_temp_collision_shape = null
+		return
+
 	if not _temp_collision_shape:
 		return
 
