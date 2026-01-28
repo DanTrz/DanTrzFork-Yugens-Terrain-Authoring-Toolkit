@@ -479,14 +479,14 @@ func _enter_tree() -> void:
 
 
 func _deferred_enter_tree() -> void:
-	if not Engine.is_editor_hint():
-		return
-
 	# Apply all persisted textures/colors to this terrain's unique shader materials
 	# This is needed because _init() creates fresh duplicated materials that don't have
 	# the terrain's saved texture values - only the base resource defaults
+	# Needed for BOTH editor and runtime rendering
 	force_batch_update()
 
+	# Populate chunks dictionary from child nodes
+	# Needed for BOTH editor and runtime
 	chunks.clear()
 	for chunk in get_children():
 		if chunk is MarchingSquaresTerrainChunk:
@@ -494,19 +494,21 @@ func _deferred_enter_tree() -> void:
 			chunk.terrain_system = self
 			chunk.grass_planter = null
 
-	# Check for external data storage
+	# Load external chunk data (height_map, color_maps, etc.)
+	# Needed for BOTH editor and runtime - scene is saved with mesh=null,
+	# so we must load source data and regenerate mesh at runtime too
 	if _storage_initialized:
-		# Load chunk data from external files
 		MSTDataHandler.load_terrain_data(self)
-	elif MSTDataHandler.needs_migration(self):
+	elif Engine.is_editor_hint() and MSTDataHandler.needs_migration(self):
 		# Existing scene with embedded data - migrate to external storage
+		# Migration is EDITOR-ONLY (modifies files)
 		print("MarchingSquaresTerrain: Detected embedded data, will migrate on next save")
-		# Mark all chunks as dirty so they will be saved externally
 		for chunk_coords in chunks:
 			var chunk : MarchingSquaresTerrainChunk = chunks[chunk_coords]
 			chunk._data_dirty = true
 
-	# Initialize all chunks (load external data or use embedded)
+	# Initialize all chunks (regenerate mesh/collision/grass from source data)
+	# Needed for BOTH editor and runtime
 	for chunk_coords in chunks:
 		var chunk : MarchingSquaresTerrainChunk = chunks[chunk_coords]
 		chunk.initialize_terrain(true)

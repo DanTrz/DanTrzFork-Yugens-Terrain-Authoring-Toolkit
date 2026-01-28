@@ -485,11 +485,13 @@ static func apply_collision_shape(chunk, shape: ConcavePolygonShape3D) -> void:
 	body.add_child(col_shape)
 	chunk.add_child(body)
 
-	# Set owner for scene persistence
-	var scene_root = EditorInterface.get_edited_scene_root() if Engine.is_editor_hint() else null
-	if scene_root:
-		body.owner = scene_root
-		col_shape.owner = scene_root
+	# Set owner for scene persistence (editor only)
+	# At runtime, owner doesn't matter - the collision just needs to work
+	if Engine.is_editor_hint():
+		var scene_root = EditorInterface.get_edited_scene_root()
+		if scene_root:
+			body.owner = scene_root
+			col_shape.owner = scene_root
 
 
 # ============================================================================

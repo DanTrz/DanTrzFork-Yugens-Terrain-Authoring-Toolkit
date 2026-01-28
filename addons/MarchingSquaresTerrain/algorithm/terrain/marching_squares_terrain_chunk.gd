@@ -121,31 +121,38 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 		needs_update.append([])
 		for x in range(dimensions.x - 1):
 			needs_update[z].append(true)
-	
+
 	if not grass_planter:
 		grass_planter = get_node_or_null("GrassPlanter")
 		if grass_planter:
 			grass_planter._chunk = self
-	if Engine.is_editor_hint():
-		if not height_map:
-			generate_height_map()
-		if not color_map_0 or not color_map_1:
-			generate_color_maps()
-		if not wall_color_map_0 or not wall_color_map_1:
-			generate_wall_color_maps()
-		if not grass_mask_map:
-			generate_grass_mask_map()
-		if not mesh and should_regenerate_mesh:
-			regenerate_mesh()
-		for child in get_children():
-			if child is StaticBody3D:
-				child.collision_layer = 17 # ground (1) + terrain (16)
-		
+
+	# Generate missing data maps (for new chunks or if external data didn't load)
+	# At editor: creates fresh data for new chunks
+	# At runtime: external data should already be loaded - this is fallback only
+	if not height_map:
+		generate_height_map()
+	if not color_map_0 or not color_map_1:
+		generate_color_maps()
+	if not wall_color_map_0 or not wall_color_map_1:
+		generate_wall_color_maps()
+	if not grass_mask_map:
+		generate_grass_mask_map()
+
+	# Regenerate mesh from source data (height_map, color_maps)
+	# CRITICAL: At runtime, mesh was saved as null in scene - must regenerate from external data
+	if not mesh and should_regenerate_mesh:
+		regenerate_mesh()
+
+	# Set collision layer
+	for child in get_children():
+		if child is StaticBody3D:
+			child.collision_layer = 17 # ground (1) + terrain (16)
+
+	# Setup and regenerate grass
+	if grass_planter:
 		grass_planter.setup(self, true)
 		grass_planter.regenerate_all_cells()
-
-	else:
-		printerr("ERROR: Trying to generate terrain during runtime (NOT SUPPORTED)")
 
 
 func _exit_tree() -> void:
@@ -196,27 +203,20 @@ func _notification(what: int) -> void:
 			grass_planter.multimesh = _temp_grass_multimesh
 			_temp_grass_multimesh = null
 
-		# 3. Restore collision shape
+		# 3. Restore collision shape (FIXED: properly break outer loop)
 		if _temp_collision_shape:
+			var collision_restored := false
 			for child in get_children():
+				if collision_restored:
+					break  # Exit outer loop
 				if child is StaticBody3D:
 					for shape_child in child.get_children():
 						if shape_child is CollisionShape3D:
 							shape_child.shape = _temp_collision_shape
-							break
+							shape_child.disabled = false  # Ensure collision is enabled
+							collision_restored = true
+							break  # Exit inner loop
 			_temp_collision_shape = null
-
-		# 4. Request gizmo redraw after Godot finishes post-save updates
-		# This fixes the brush visualization disappearing after save
-		call_deferred("_request_gizmo_redraw")
-
-
-## Request gizmo redraw after save to restore brush visualization
-func _request_gizmo_redraw() -> void:
-	if MarchingSquaresTerrainPlugin.instance:
-		var gizmo_plugin = MarchingSquaresTerrainPlugin.instance.gizmo_plugin
-		if gizmo_plugin and gizmo_plugin.terrain_gizmo:
-			gizmo_plugin.terrain_gizmo._redraw()
 
 
 func regenerate_mesh():
