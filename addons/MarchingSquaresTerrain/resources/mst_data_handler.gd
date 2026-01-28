@@ -2,15 +2,13 @@
 class_name MSTDataHandler
 extends RefCounted
 ## Central handler for all external terrain data storage operations.
-## Follows DRY principle by consolidating save/load/cleanup in one place.
+
 
 const ChunkData = preload("uid://bf23lqlv5tm2c")
 
 
-# ============================================================================
-# DIRECTORY MANAGEMENT
-# ============================================================================
 
+# DIRECTORY MANAGEMENT
 ## Generate a unique terrain ID (called once on first save)
 ## Format: 8 hex chars (e.g., "a1b2c3d4")
 static func generate_terrain_uid() -> String:
@@ -59,10 +57,7 @@ static func get_data_directory(terrain: MarchingSquaresTerrain) -> String:
 	return dir_path
 
 
-# ============================================================================
 # SAVE OPERATIONS
-# ============================================================================
-
 ## Save all dirty chunks to external .res files
 ## This saves individual resources and sets their resource_path to prevent scene embedding
 static func save_all_chunks(terrain: MarchingSquaresTerrain) -> void:
@@ -119,9 +114,6 @@ static func save_all_chunks(terrain: MarchingSquaresTerrain) -> void:
 
 
 ## Save a chunk's ephemeral resources (mesh, collision, multimesh) to external files
-## These resources are NEVER loaded via ResourceLoader, so they have empty resource_path
-## and won't conflict with Godot's cache. Just save directly.
-## Note: chunk parameter is untyped to avoid cyclic reference with MarchingSquaresTerrainChunk
 static func save_chunk_resources(terrain: MarchingSquaresTerrain, chunk) -> void:
 	var dir_path := get_data_directory(terrain)
 	if dir_path.is_empty():
@@ -167,10 +159,7 @@ static func save_chunk_resources(terrain: MarchingSquaresTerrain, chunk) -> void
 		print_verbose("MSTDataHandler: Saved chunk ", chunk.chunk_coords, " to ", chunk_dir)
 
 
-# ============================================================================
 # LOAD OPERATIONS
-# ============================================================================
-
 ## Load all terrain data from external files
 static func load_terrain_data(terrain: MarchingSquaresTerrain) -> void:
 	var dir_path := get_data_directory(terrain)
@@ -222,22 +211,15 @@ static func load_chunk_from_directory(terrain: MarchingSquaresTerrain, coords: V
 	var chunk = terrain.chunks.get(coords)
 	if not chunk:
 		# Chunk should already exist in scene - external storage doesn't create new chunks
-		# This case handles when scene was saved without chunks (shouldn't happen normally)
 		return
 
-	# Load metadata ONLY (height_map, color_maps, etc.)
-	# DO NOT load mesh/collision/grass - they are ephemeral and will be regenerated
-	# by initialize_terrain() from source data. Loading them via ResourceLoader would
-	# register them in Godot's cache, causing "cyclic resource inclusion" errors on save.
+	# Load metadata ONLY 
+	# DO NOT load mesh/collision/grass... they are ephemeral and will be regenerated
 	var metadata_path := chunk_dir + "metadata.res"
 	if ResourceLoader.exists(metadata_path):
 		var data : ChunkData = load(metadata_path)
 		if data:
 			import_chunk_data(chunk, data)
-
-	# mesh.res, collision.res, grass_multimesh.res are NOT loaded here.
-	# They exist on disk for persistence only.
-	# initialize_terrain() will call regenerate_mesh() to create ephemeral versions.
 
 	print_verbose("MSTDataHandler: Loaded chunk metadata ", coords, " from ", chunk_dir)
 
@@ -279,12 +261,9 @@ static func load_chunk_metadata(terrain: MarchingSquaresTerrain, coords: Vector2
 		return null
 
 
-# ============================================================================
-# CLEANUP OPERATIONS
-# ============================================================================
-
+# CLEANUP OPERATION
 ## Clean up orphaned chunk directories that no longer exist in the scene
-## Called automatically during save to prevent disk space accumulation
+## Called automatically during save to prevent disk issues
 static func cleanup_orphaned_chunk_files(terrain: MarchingSquaresTerrain) -> void:
 	var dir_path := get_data_directory(terrain)
 	if dir_path.is_empty():
@@ -339,10 +318,7 @@ static func delete_chunk_directory(chunk_dir: String) -> void:
 		printerr("MSTDataHandler: Failed to delete directory ", chunk_dir)
 
 
-# ============================================================================
 # UTILITY OPERATIONS
-# ============================================================================
-
 ## Check if all resource files exist for a chunk
 static func chunk_resources_exist(terrain: MarchingSquaresTerrain, coords: Vector2i) -> bool:
 	var dir_path := get_data_directory(terrain)
@@ -363,8 +339,7 @@ static func needs_migration(terrain: MarchingSquaresTerrain) -> bool:
 		return false
 
 	for chunk_coords in terrain.chunks:
-		var chunk = terrain.chunks[chunk_coords]  # Untyped to avoid cyclic reference
-		# If chunk has height_map data but no external resources, migration is needed
+		var chunk = terrain.chunks[chunk_coords]  
 		if chunk.height_map and not chunk.height_map.is_empty():
 			if not chunk_resources_exist(terrain, chunk_coords):
 				return true
@@ -381,18 +356,13 @@ static func migrate_to_external_storage(terrain: MarchingSquaresTerrain) -> void
 		var chunk = terrain.chunks[chunk_coords]  # Untyped to avoid cyclic reference
 		chunk._data_dirty = true
 
-	# Save all chunks externally
 	save_all_chunks(terrain)
 
 	print("MSTDataHandler: Migration complete. External data saved to: ", get_data_directory(terrain))
 
 
-# ============================================================================
 # DATA SERIALIZATION (from marching_squares_terrain_chunk.gd)
-# ============================================================================
-
 ## Convert chunk state to MarchingSquaresChunkData for external storage
-## Note: chunk parameter is untyped to avoid cyclic reference with MarchingSquaresTerrainChunk
 static func export_chunk_data(chunk) -> ChunkData:
 	var data := ChunkData.new()
 	data.chunk_coords = chunk.chunk_coords
@@ -421,14 +391,12 @@ static func export_chunk_data(chunk) -> ChunkData:
 	if chunk.grass_planter and chunk.grass_planter.multimesh:
 		data.grass_multimesh = chunk.grass_planter.multimesh
 
-	# Cell geometry cache (optional - can be regenerated)
 	data.cell_geometry = chunk.cell_geometry.duplicate(true)
 
 	return data
 
 
 ## Restore chunk state from MarchingSquaresChunkData (loaded from external file)
-## Note: chunk parameter is untyped to avoid cyclic reference with MarchingSquaresTerrainChunk
 static func import_chunk_data(chunk, data: ChunkData) -> void:
 	if not data:
 		printerr("MSTDataHandler: import_chunk_data called with null data")
@@ -449,15 +417,10 @@ static func import_chunk_data(chunk, data: ChunkData) -> void:
 	if not data.cell_geometry.is_empty():
 		chunk.cell_geometry = data.cell_geometry.duplicate(true)
 
-	# NOTE: Mesh, collision, and grass multimesh are loaded SEPARATELY in load_chunk_from_directory()
-	# They are NOT stored in metadata.res (nulled before save to prevent embedding)
-	# Do NOT try to apply them here - it would overwrite correctly-loaded external resources
-
 	chunk._data_dirty = false
 
 
 ## Get the current collision shape from a chunk (if any)
-## Note: chunk parameter is untyped to avoid cyclic reference with MarchingSquaresTerrainChunk
 static func get_collision_shape(chunk) -> ConcavePolygonShape3D:
 	for child in chunk.get_children():
 		if child is StaticBody3D:
@@ -468,7 +431,6 @@ static func get_collision_shape(chunk) -> ConcavePolygonShape3D:
 
 
 ## Apply collision shape from external data to a chunk
-## Note: chunk parameter is untyped to avoid cyclic reference with MarchingSquaresTerrainChunk
 static func apply_collision_shape(chunk, shape: ConcavePolygonShape3D) -> void:
 	# Remove existing collision bodies
 	for child in chunk.get_children():
@@ -485,8 +447,7 @@ static func apply_collision_shape(chunk, shape: ConcavePolygonShape3D) -> void:
 	body.add_child(col_shape)
 	chunk.add_child(body)
 
-	# Set owner for scene persistence (editor only)
-	# At runtime, owner doesn't matter - the collision just needs to work
+	# Set owner for scene persistence (editor only) #TODO: We might not need to set owner here? Like I did in TileMapLayer3D
 	if Engine.is_editor_hint():
 		var scene_root = EditorInterface.get_edited_scene_root()
 		if scene_root:
@@ -494,10 +455,7 @@ static func apply_collision_shape(chunk, shape: ConcavePolygonShape3D) -> void:
 			col_shape.owner = scene_root
 
 
-# ============================================================================
-# LEGACY FORMAT SUPPORT (from terrain_file_utils.gd)
-# ============================================================================
-
+# HLEPRR FUNCTIONS
 ## Convert chunk coordinates to filename (legacy format)
 static func coords_to_filename(coords: Vector2i) -> String:
 	return "terrain_chunk_%d_%d.res" % [coords.x, coords.y]
@@ -523,7 +481,6 @@ static func filename_to_coords(filename: String) -> Vector2i:
 
 
 ## Get all chunk files in a directory (legacy format)
-## Returns dictionary of Vector2i -> file_path
 static func get_chunk_files_in_directory(dir_path: String) -> Dictionary:
 	var result := {}
 

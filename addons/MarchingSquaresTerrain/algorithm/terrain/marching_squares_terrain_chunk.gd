@@ -35,6 +35,7 @@ const BLEND_EDGE_SENSITIVITY : float = 1.25
 					grass_mat.set_shader_parameter("is_merge_round", false)
 			merge_threshold = MERGE_MODE[mode]
 			regenerate_all_cells()
+
 # Chunk data arrays - stored externally via MarchingSquaresChunkData, NOT embedded in scene
 # These are runtime-only variables that get populated from external .res files on load
 var height_map : Array # Stores the heights from the heightmap
@@ -101,8 +102,8 @@ var needs_update : Array[Array] # Stores which tiles need to be updated because 
 var _skip_save_on_exit : bool = false # Set to true when chunk is removed temporarily (undo/redo)
 var _data_dirty : bool = false # Set to true when chunk data needs saving to external file
 
-# Temporary storage for resources during scene save (clear before save, restore after)
-# This prevents Godot from serializing these resources into the scene file
+# Temporary storage for resources during scene save 
+# prevents from serializing these resources into the scene file
 var _temp_mesh : ArrayMesh
 var _temp_grass_multimesh : MultiMesh
 var _temp_collision_shape : ConcavePolygonShape3D
@@ -128,8 +129,6 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 			grass_planter._chunk = self
 
 	# Generate missing data maps (for new chunks or if external data didn't load)
-	# At editor: creates fresh data for new chunks
-	# At runtime: external data should already be loaded - this is fallback only
 	if not height_map:
 		generate_height_map()
 	if not color_map_0 or not color_map_1:
@@ -140,7 +139,6 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 		generate_grass_mask_map()
 
 	# Regenerate mesh from source data (height_map, color_maps)
-	# CRITICAL: At runtime, mesh was saved as null in scene - must regenerate from external data
 	if not mesh and should_regenerate_mesh:
 		regenerate_mesh()
 
@@ -157,12 +155,8 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 
 func _exit_tree() -> void:
 	# Only erase if terrain_system still has THIS chunk at chunk_coords
-	# (avoids double-erasure when remove_chunk_from_tree already erased it)
 	if terrain_system and terrain_system.chunks.get(chunk_coords) == self:
 		terrain_system.chunks.erase(chunk_coords)
-	# NOTE: Mesh saving is now handled by MarchingSquaresTerrain._notification(NOTIFICATION_EDITOR_PRE_SAVE)
-	# via the external chunk data storage system. No per-chunk save needed here.
-
 
 func _notification(what: int) -> void:
 	if not Engine.is_editor_hint():
@@ -170,8 +164,6 @@ func _notification(what: int) -> void:
 
 	if what == NOTIFICATION_EDITOR_PRE_SAVE:
 		# Clear resource references so Godot doesn't serialize them into the scene
-		# Binary save already happened in terrain's PRE_SAVE (which runs first on parent)
-
 		# 1. Clear mesh
 		_temp_mesh = mesh
 		mesh = null
@@ -203,20 +195,37 @@ func _notification(what: int) -> void:
 			grass_planter.multimesh = _temp_grass_multimesh
 			_temp_grass_multimesh = null
 
-		# 3. Restore collision shape (FIXED: properly break outer loop)
+		# 3. Recreate collision body to force physics engine refresh
 		if _temp_collision_shape:
-			var collision_restored := false
+			# Remove existing StaticBody3D (will be recreated)
 			for child in get_children():
-				if collision_restored:
-					break  # Exit outer loop
 				if child is StaticBody3D:
-					for shape_child in child.get_children():
-						if shape_child is CollisionShape3D:
-							shape_child.shape = _temp_collision_shape
-							shape_child.disabled = false  # Ensure collision is enabled
-							collision_restored = true
-							break  # Exit inner loop
-			_temp_collision_shape = null
+					child.queue_free()
+			# Defer recreation to ensure physics engine sees fresh registration
+			call_deferred("_recreate_collision_body")
+
+
+## Recreate collision body after scene save to force physics engine refresh.
+## Called via call_deferred() from POST_SAVE.
+func _recreate_collision_body() -> void:
+	if not _temp_collision_shape:
+		return
+
+	var body := StaticBody3D.new()
+	body.collision_layer = 17  # ground (1) + terrain (16)
+	var col_shape := CollisionShape3D.new()
+	col_shape.shape = _temp_collision_shape
+	body.add_child(col_shape)
+	add_child(body)
+
+	# Set owner for scene persistence (editor only)
+	if Engine.is_editor_hint():
+		var scene_root = EditorInterface.get_edited_scene_root()
+		if scene_root:
+			body.owner = scene_root
+			col_shape.owner = scene_root
+
+	_temp_collision_shape = null
 
 
 func regenerate_mesh():
@@ -258,7 +267,6 @@ func regenerate_mesh():
 	mesh = st.commit()
 
 	# Mark chunk as dirty so it gets saved externally on next scene save
-	# This ensures terrain edits trigger external storage sync
 	_data_dirty = true
 
 	if mesh and terrain_system:
@@ -308,7 +316,6 @@ func generate_terrain_cells():
 			# Cell is now being updated
 			needs_update[z][x] = false
 			
-			# If geometry did change or none exists yet, 
 			# Create an entry for this cell (will also override any existing one)
 			cell_geometry[cell_coords] = {
 				"verts": PackedVector3Array(),

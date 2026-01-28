@@ -1,6 +1,5 @@
 @tool
 extends Node3D
-# Needs to be kept as a Node3D so that the 3d gizmo works. no 3d functionality is otherwise used, it is delegated to the chunks
 class_name MarchingSquaresTerrain
 
 const MSTDataHandler = preload("uid://pbdx11bqocl2")
@@ -85,26 +84,6 @@ const ChunkData = preload("uid://bf23lqlv5tm2c")
 			terrain_material.set_shader_parameter("ground_albedo", value)
 			var grass_mat := grass_mesh.material as ShaderMaterial
 			grass_mat.set_shader_parameter("grass_base_color", value)
-# Legacy wall color properties - kept for backward compatibility with existing scenes
-# These are no-ops: walls now use the same color tinting as ground textures via the unified system
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color : Color = Color("5e5645ff"):
-	set(value):
-		wall_color = value  # Store for persistence only - no shader effect
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color_2 : Color = Color("665950ff"):
-	set(value):
-		wall_color_2 = value  # Store for persistence only - no shader effect
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color_3 : Color = Color("595240ff"):
-	set(value):
-		wall_color_3 = value  # Store for persistence only - no shader effect
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color_4 : Color = Color("615745ff"):
-	set(value):
-		wall_color_4 = value  # Store for persistence only - no shader effect
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color_5 : Color = Color("5c5442ff"):
-	set(value):
-		wall_color_5 = value  # Store for persistence only - no shader effect
-@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var wall_color_6 : Color = Color("6b614cff"):
-	set(value):
-		wall_color_6 = value  # Store for persistence only - no shader effect
 
 # Base grass settings
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var grass_sprite : CompressedTexture2D = preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/grass_leaf_sprite.png"):
@@ -480,13 +459,9 @@ func _enter_tree() -> void:
 
 func _deferred_enter_tree() -> void:
 	# Apply all persisted textures/colors to this terrain's unique shader materials
-	# This is needed because _init() creates fresh duplicated materials that don't have
-	# the terrain's saved texture values - only the base resource defaults
-	# Needed for BOTH editor and runtime rendering
 	force_batch_update()
 
 	# Populate chunks dictionary from child nodes
-	# Needed for BOTH editor and runtime
 	chunks.clear()
 	for chunk in get_children():
 		if chunk is MarchingSquaresTerrainChunk:
@@ -495,8 +470,6 @@ func _deferred_enter_tree() -> void:
 			chunk.grass_planter = null
 
 	# Load external chunk data (height_map, color_maps, etc.)
-	# Needed for BOTH editor and runtime - scene is saved with mesh=null,
-	# so we must load source data and regenerate mesh at runtime too
 	if _storage_initialized:
 		MSTDataHandler.load_terrain_data(self)
 	elif Engine.is_editor_hint() and MSTDataHandler.needs_migration(self):
@@ -508,7 +481,6 @@ func _deferred_enter_tree() -> void:
 			chunk._data_dirty = true
 
 	# Initialize all chunks (regenerate mesh/collision/grass from source data)
-	# Needed for BOTH editor and runtime
 	for chunk_coords in chunks:
 		var chunk : MarchingSquaresTerrainChunk = chunks[chunk_coords]
 		chunk.initialize_terrain(true)
@@ -545,8 +517,7 @@ func add_new_chunk(chunk_x: int, chunk_z: int):
 		for x in range(0, dimensions.x):
 			new_chunk.height_map[dimensions.z - 1][x] = chunk_down.height_map[0][x]
 
-	# Eagerly create data directory when first chunk is added
-	# This prevents data loss if user creates terrain but doesn't save before closing
+	# create data directory when first chunk is added
 	var dir_path := MSTDataHandler.get_data_directory(self)
 	if not dir_path.is_empty():
 		MSTDataHandler.ensure_directory_exists(dir_path)
@@ -580,8 +551,6 @@ func add_chunk(coords: Vector2i, chunk: MarchingSquaresTerrainChunk, regenerate_
 	add_child(chunk)
 	
 	# Use position instead of global_position to avoid "is_inside_tree()" errors
-	# when multiple scenes with MarchingSquaresTerrain are open in editor tabs.
-	# Since chunks are direct children of terrain, position equals global_position.
 	chunk.position = Vector3(
 		coords.x * ((dimensions.x - 1) * cell_size.x),
 		0,
@@ -633,14 +602,6 @@ func _ensure_textures() -> void:
 	if terrain_material.get_shader_parameter("vc_tex_aa") == null:
 		terrain_material.set_shader_parameter("vc_tex_aa", void_texture)
 	
-	# Ensure wall albedo colors are set (required because setters don't run on load with defaults)
-	terrain_material.set_shader_parameter("wall_albedo", wall_color)
-	terrain_material.set_shader_parameter("wall_albedo_2", wall_color_2)
-	terrain_material.set_shader_parameter("wall_albedo_3", wall_color_3)
-	terrain_material.set_shader_parameter("wall_albedo_4", wall_color_4)
-	terrain_material.set_shader_parameter("wall_albedo_5", wall_color_5)
-	terrain_material.set_shader_parameter("wall_albedo_6", wall_color_6)
-
 
 # Applies all shader parameters and regenerates grass once
 # Call this after setting is_batch_updating = true and changing properties
