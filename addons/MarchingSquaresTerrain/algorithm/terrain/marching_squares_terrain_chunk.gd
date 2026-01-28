@@ -2,7 +2,8 @@
 extends MeshInstance3D
 class_name MarchingSquaresTerrainChunk
 
-const ChunkData = preload("res://addons/MarchingSquaresTerrain/resources/marching_squares_chunk_data.gd")
+const ChunkData = preload("uid://bf23lqlv5tm2c")
+const MSTDataHandler = preload("uid://pbdx11bqocl2")
 
 enum Mode {CUBIC, POLYHEDRON, ROUNDED_POLYHEDRON, SEMI_ROUND, SPHERICAL}
 
@@ -100,6 +101,12 @@ var needs_update : Array[Array] # Stores which tiles need to be updated because 
 var _skip_save_on_exit : bool = false # Set to true when chunk is removed temporarily (undo/redo)
 var _data_dirty : bool = false # Set to true when chunk data needs saving to external file
 
+# Temporary storage for resources during scene save (clear before save, restore after)
+# This prevents Godot from serializing these resources into the scene file
+var _temp_mesh : ArrayMesh
+var _temp_grass_multimesh : MultiMesh
+var _temp_collision_shape : ConcavePolygonShape3D
+
 # Terrain blend options to allow for smooth color and height blend influence at transitions and at different heights 
 var lower_thresh : float = 0.3 # Sharp bands: < 0.3 = lower color
 var upper_thresh : float = 0.7 #, > 0.7 = upper color, middle = blend
@@ -136,7 +143,7 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 		
 		grass_planter.setup(self, true)
 		grass_planter.regenerate_all_cells()
-	
+
 	else:
 		printerr("ERROR: Trying to generate terrain during runtime (NOT SUPPORTED)")
 
@@ -148,6 +155,68 @@ func _exit_tree() -> void:
 		terrain_system.chunks.erase(chunk_coords)
 	# NOTE: Mesh saving is now handled by MarchingSquaresTerrain._notification(NOTIFICATION_EDITOR_PRE_SAVE)
 	# via the external chunk data storage system. No per-chunk save needed here.
+
+
+func _notification(what: int) -> void:
+	if not Engine.is_editor_hint():
+		return
+
+	if what == NOTIFICATION_EDITOR_PRE_SAVE:
+		# Clear resource references so Godot doesn't serialize them into the scene
+		# Binary save already happened in terrain's PRE_SAVE (which runs first on parent)
+
+		# 1. Clear mesh
+		_temp_mesh = mesh
+		mesh = null
+
+		# 2. Clear grass multimesh
+		if grass_planter and grass_planter.multimesh:
+			_temp_grass_multimesh = grass_planter.multimesh
+			grass_planter.multimesh = null
+
+		# 3. Clear collision shape
+		for child in get_children():
+			if child is StaticBody3D:
+				for shape_child in child.get_children():
+					if shape_child is CollisionShape3D and shape_child.shape is ConcavePolygonShape3D:
+						_temp_collision_shape = shape_child.shape
+						shape_child.shape = null
+						break
+
+	elif what == NOTIFICATION_EDITOR_POST_SAVE:
+		# Restore resource references after scene is saved
+
+		# 1. Restore mesh
+		if _temp_mesh:
+			mesh = _temp_mesh
+			_temp_mesh = null
+
+		# 2. Restore grass multimesh
+		if _temp_grass_multimesh and grass_planter:
+			grass_planter.multimesh = _temp_grass_multimesh
+			_temp_grass_multimesh = null
+
+		# 3. Restore collision shape
+		if _temp_collision_shape:
+			for child in get_children():
+				if child is StaticBody3D:
+					for shape_child in child.get_children():
+						if shape_child is CollisionShape3D:
+							shape_child.shape = _temp_collision_shape
+							break
+			_temp_collision_shape = null
+
+		# 4. Request gizmo redraw after Godot finishes post-save updates
+		# This fixes the brush visualization disappearing after save
+		call_deferred("_request_gizmo_redraw")
+
+
+## Request gizmo redraw after save to restore brush visualization
+func _request_gizmo_redraw() -> void:
+	if MarchingSquaresTerrainPlugin.instance:
+		var gizmo_plugin = MarchingSquaresTerrainPlugin.instance.gizmo_plugin
+		if gizmo_plugin and gizmo_plugin.terrain_gizmo:
+			gizmo_plugin.terrain_gizmo._redraw()
 
 
 func regenerate_mesh():
@@ -202,7 +271,7 @@ func regenerate_mesh():
 	for child in get_children():
 		if child is StaticBody3D:
 			child.collision_layer = 17 # ground (1) + terrain (16)
-	
+
 	var elapsed_time: int = Time.get_ticks_msec() - start_time
 	print_verbose("Generated terrain in "+str(elapsed_time)+"ms")
 
@@ -1318,109 +1387,3 @@ func regenerate_all_cells():
 	regenerate_mesh()
 
 
-## Convert chunk state to MarchingSquaresChunkData for external storage
-func to_chunk_data() -> ChunkData:
-	var data := ChunkData.new()
-	data.chunk_coords = chunk_coords
-	data.merge_mode = merge_mode
-
-	# Source data (deep copy for arrays)
-	data.height_map = height_map.duplicate(true)
-	data.color_map_0 = color_map_0.duplicate()
-	data.color_map_1 = color_map_1.duplicate()
-	data.wall_color_map_0 = wall_color_map_0.duplicate()
-	data.wall_color_map_1 = wall_color_map_1.duplicate()
-	data.grass_mask_map = grass_mask_map.duplicate()
-
-	# Generated data
-	data.mesh = mesh
-
-	# Extract collision shape faces
-	for child in get_children():
-		if child is StaticBody3D:
-			for shape_child in child.get_children():
-				if shape_child is CollisionShape3D and shape_child.shape is ConcavePolygonShape3D:
-					data.set_collision_from_shape(shape_child.shape)
-					break
-
-	# Grass multimesh
-	if grass_planter and grass_planter.multimesh:
-		data.grass_multimesh = grass_planter.multimesh
-
-	# Cell geometry cache (optional - can be regenerated)
-	data.cell_geometry = cell_geometry.duplicate(true)
-
-	return data
-
-
-## Restore chunk state from MarchingSquaresChunkData (loaded from external file)
-func from_chunk_data(data: ChunkData) -> void:
-	if not data:
-		printerr("ERROR: from_chunk_data called with null data")
-		return
-
-	chunk_coords = data.chunk_coords
-	merge_mode = data.merge_mode
-
-	# Source data
-	height_map = data.height_map.duplicate(true)
-	color_map_0 = data.color_map_0.duplicate()
-	color_map_1 = data.color_map_1.duplicate()
-	wall_color_map_0 = data.wall_color_map_0.duplicate()
-	wall_color_map_1 = data.wall_color_map_1.duplicate()
-	grass_mask_map = data.grass_mask_map.duplicate()
-
-	# Cell geometry cache
-	if not data.cell_geometry.is_empty():
-		cell_geometry = data.cell_geometry.duplicate(true)
-
-	# Apply mesh (loaded from external file)
-	if data.mesh:
-		mesh = data.mesh
-		if mesh and terrain_system:
-			mesh.surface_set_material(0, terrain_system.terrain_material)
-
-	# Apply collision
-	var collision_shape : ConcavePolygonShape3D = data.get_collision_shape()
-	if collision_shape:
-		_apply_collision_shape(collision_shape)
-
-	# Apply grass multimesh
-	if data.grass_multimesh and grass_planter:
-		grass_planter.multimesh = data.grass_multimesh
-
-	_data_dirty = false
-
-
-## Get the current collision shape from this chunk (if any)
-func _get_collision_shape() -> ConcavePolygonShape3D:
-	for child in get_children():
-		if child is StaticBody3D:
-			for shape_child in child.get_children():
-				if shape_child is CollisionShape3D and shape_child.shape is ConcavePolygonShape3D:
-					return shape_child.shape
-	return null
-
-
-## Apply collision shape from external data
-func _apply_collision_shape(shape: ConcavePolygonShape3D) -> void:
-	# Remove existing collision bodies
-	for child in get_children():
-		if child is StaticBody3D:
-			child.free()
-
-	if not shape:
-		return
-
-	var body := StaticBody3D.new()
-	body.collision_layer = 17  # ground (1) + terrain (16)
-	var col_shape := CollisionShape3D.new()
-	col_shape.shape = shape
-	body.add_child(col_shape)
-	add_child(body)
-
-	# Set owner for scene persistence
-	var scene_root = EditorInterface.get_edited_scene_root() if Engine.is_editor_hint() else null
-	if scene_root:
-		body.owner = scene_root
-		col_shape.owner = scene_root

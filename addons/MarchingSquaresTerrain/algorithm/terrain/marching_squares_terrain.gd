@@ -3,8 +3,8 @@ extends Node3D
 # Needs to be kept as a Node3D so that the 3d gizmo works. no 3d functionality is otherwise used, it is delegated to the chunks
 class_name MarchingSquaresTerrain
 
-const FileUtils = preload("res://addons/MarchingSquaresTerrain/resources/terrain_file_utils.gd")
-const ChunkData = preload("res://addons/MarchingSquaresTerrain/resources/marching_squares_chunk_data.gd")
+const MSTDataHandler = preload("uid://pbdx11bqocl2")
+const ChunkData = preload("uid://bf23lqlv5tm2c")
 
 ## External storage directory for chunk data files.
 ## Leave empty to use default: [SceneDir]/[SceneName]_TerrainData/[NodeName]/
@@ -13,7 +13,7 @@ const ChunkData = preload("res://addons/MarchingSquaresTerrain/resources/marchin
 		data_directory = value
 		# Trigger load when directory is changed in editor
 		if Engine.is_editor_hint() and is_inside_tree() and not value.is_empty():
-			call_deferred("_load_terrain_data")
+			call_deferred("_deferred_load_terrain_data")
 
 ## Internal flag to track if external storage has been initialized
 @export_storage var _storage_initialized : bool = false
@@ -497,8 +497,8 @@ func _deferred_enter_tree() -> void:
 	# Check for external data storage
 	if _storage_initialized:
 		# Load chunk data from external files
-		_load_terrain_data()
-	elif _needs_migration():
+		MSTDataHandler.load_terrain_data(self)
+	elif MSTDataHandler.needs_migration(self):
 		# Existing scene with embedded data - migrate to external storage
 		print("MarchingSquaresTerrain: Detected embedded data, will migrate on next save")
 		# Mark all chunks as dirty so they will be saved externally
@@ -545,9 +545,9 @@ func add_new_chunk(chunk_x: int, chunk_z: int):
 
 	# Eagerly create data directory when first chunk is added
 	# This prevents data loss if user creates terrain but doesn't save before closing
-	var dir_path := get_data_directory()
+	var dir_path := MSTDataHandler.get_data_directory(self)
 	if not dir_path.is_empty():
-		FileUtils.ensure_directory_exists(dir_path)
+		MSTDataHandler.ensure_directory_exists(dir_path)
 
 	new_chunk.regenerate_mesh()
 
@@ -778,373 +778,9 @@ func save_to_preset() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_EDITOR_PRE_SAVE:
 		if Engine.is_editor_hint():
-			_save_all_chunks_externally()
+			MSTDataHandler.save_all_chunks(self)
 
 
-## Generate a unique terrain ID (called once on first save)
-func _generate_terrain_uid() -> void:
-	# Generate a short, readable UID combining random + timestamp
-	# Format: 8 hex chars (e.g., "a1b2c3d4")
-	_terrain_uid = "%08x" % (randi() ^ int(Time.get_unix_time_from_system()))
-
-
-## Get the resolved data directory path, creating it if needed
-## Path format: [SceneDir]/[SceneName]_TerrainData/[NodeName]_[UID]/
-func get_data_directory() -> String:
-	var dir_path := data_directory
-
-	# If empty, generate default path based on scene location with unique UID
-	if dir_path.is_empty():
-		var scene_root := get_tree().edited_scene_root if Engine.is_editor_hint() else get_tree().current_scene
-		if not scene_root or scene_root.scene_file_path.is_empty():
-			return ""
-
-		# Generate UID if not set (first save)
-		if _terrain_uid.is_empty():
-			_generate_terrain_uid()
-
-		var scene_path := scene_root.scene_file_path
-		var scene_dir := scene_path.get_base_dir()
-		var scene_name := scene_path.get_file().get_basename()
-		# Include UID in path to prevent collisions when nodes are recreated with same name
-		dir_path = scene_dir.path_join(scene_name + "_TerrainData").path_join(name + "_" + _terrain_uid) + "/"
-
-	# Ensure path ends with /
-	if not dir_path.is_empty() and not dir_path.ends_with("/"):
-		dir_path += "/"
-
-	return dir_path
-
-
-## Save all dirty chunks to external .res files
-## This saves individual resources and sets their resource_path to prevent scene embedding
-func _save_all_chunks_externally() -> void:
-	var dir_path := get_data_directory()
-	if dir_path.is_empty():
-		# No valid data directory - scene might not be saved yet
-		return
-
-	# Ensure directory exists
-	if not FileUtils.ensure_directory_exists(dir_path):
-		printerr("MarchingSquaresTerrain: Failed to create data directory: ", dir_path)
-		return
-
-	var saved_count := 0
-	for chunk_coords in chunks:
-		var chunk : MarchingSquaresTerrainChunk = chunks[chunk_coords]
-
-		# Skip chunks being removed during undo/redo
-		if chunk._skip_save_on_exit:
-			continue
-
-		# Determine if chunk needs saving:
-		# 1. Chunk is marked dirty (terrain was edited)
-		# 2. External files don't exist yet
-		# 3. Any resource exists but lost its resource_path (regenerated)
-		var needs_save := chunk._data_dirty
-		if not needs_save and not _chunk_resources_exist(chunk_coords):
-			needs_save = true
-		# Check if mesh lost its external path (regenerated during terrain edit)
-		if not needs_save and chunk.mesh and chunk.mesh.resource_path.is_empty():
-			needs_save = true
-		# Check if collision shape lost its external path
-		if not needs_save:
-			var collision_shape := chunk._get_collision_shape()
-			if collision_shape and collision_shape.resource_path.is_empty():
-				needs_save = true
-		# Check if grass multimesh lost its external path
-		if not needs_save and chunk.grass_planter and chunk.grass_planter.multimesh:
-			if chunk.grass_planter.multimesh.resource_path.is_empty():
-				needs_save = true
-
-		if needs_save:
-			_save_chunk_resources(chunk)
-			chunk._data_dirty = false
-			saved_count += 1
-
-	if saved_count > 0:
-		print_verbose("MarchingSquaresTerrain: Saved ", saved_count, " chunk(s) to ", dir_path)
-
-	# Clean up orphaned chunk directories that no longer exist in scene
-	_cleanup_orphaned_chunk_files()
-
-	_storage_initialized = true
-
-
-## Check if all resource files exist for a chunk
-func _chunk_resources_exist(coords: Vector2i) -> bool:
-	var dir_path := get_data_directory()
-	var chunk_dir := dir_path + "chunk_%d_%d/" % [coords.x, coords.y]
-	# At minimum, mesh.res should exist for a valid saved chunk
-	return FileAccess.file_exists(chunk_dir + "mesh.res")
-
-
-## Save a chunk's heavy resources (mesh, collision, multimesh) to external files
-## This sets resource_path on each resource to prevent scene embedding
-func _save_chunk_resources(chunk: MarchingSquaresTerrainChunk) -> void:
-	var dir_path := get_data_directory()
-	if dir_path.is_empty():
-		printerr("MarchingSquaresTerrain: Cannot save chunk - no valid data directory")
-		return
-
-	var chunk_dir := dir_path + "chunk_%d_%d/" % [chunk.chunk_coords.x, chunk.chunk_coords.y]
-	FileUtils.ensure_directory_exists(chunk_dir)
-
-	# 1. Save mesh and SET resource_path (prevents scene embedding)
-	if chunk.mesh:
-		var mesh_path := chunk_dir + "mesh.res"
-		var err := ResourceSaver.save(chunk.mesh, mesh_path, ResourceSaver.FLAG_COMPRESS)
-		if err == OK:
-			# Setting resource_path tells Godot to use ext_resource instead of embedding
-			chunk.mesh.resource_path = mesh_path
-		else:
-			printerr("MarchingSquaresTerrain: Failed to save mesh to ", mesh_path)
-
-	# 2. Save collision shape and SET its resource_path
-	var collision_shape : ConcavePolygonShape3D = chunk._get_collision_shape()
-	if collision_shape:
-		var collision_path := chunk_dir + "collision.res"
-		var err := ResourceSaver.save(collision_shape, collision_path, ResourceSaver.FLAG_COMPRESS)
-		if err == OK:
-			collision_shape.resource_path = collision_path
-		else:
-			printerr("MarchingSquaresTerrain: Failed to save collision to ", collision_path)
-
-	# 3. Save grass multimesh and SET its resource_path
-	if chunk.grass_planter and chunk.grass_planter.multimesh:
-		var grass_path := chunk_dir + "grass_multimesh.res"
-		var err := ResourceSaver.save(chunk.grass_planter.multimesh, grass_path, ResourceSaver.FLAG_COMPRESS)
-		if err == OK:
-			chunk.grass_planter.multimesh.resource_path = grass_path
-		else:
-			printerr("MarchingSquaresTerrain: Failed to save grass multimesh to ", grass_path)
-
-	# 4. Save chunk metadata (height_map, color_maps, etc.) - these stay bundled
-	var data : ChunkData = chunk.to_chunk_data()
-	# Don't duplicate the heavy resources in metadata - they're saved separately
-	data.mesh = null
-	data.grass_multimesh = null
-	data.collision_faces = PackedVector3Array()
-	var metadata_path := chunk_dir + "metadata.res"
-	var err := ResourceSaver.save(data, metadata_path, ResourceSaver.FLAG_COMPRESS)
-	if err != OK:
-		printerr("MarchingSquaresTerrain: Failed to save metadata to ", metadata_path)
-	else:
-		print_verbose("MarchingSquaresTerrain: Saved chunk ", chunk.chunk_coords, " to ", chunk_dir)
-
-
-## Legacy function for backward compatibility - redirects to new resource-based save
-func save_chunk_data(chunk: MarchingSquaresTerrainChunk) -> void:
-	_save_chunk_resources(chunk)
-
-
-## Clean up orphaned chunk directories that no longer exist in the scene
-## Called automatically during save to prevent disk space accumulation
-func _cleanup_orphaned_chunk_files() -> void:
-	var dir_path := get_data_directory()
-	if dir_path.is_empty():
-		return
-
-	var dir := DirAccess.open(dir_path)
-	if not dir:
-		return
-
-	var orphaned_dirs : Array[String] = []
-
-	dir.list_dir_begin()
-	var folder_name := dir.get_next()
-	while folder_name != "":
-		if dir.current_is_dir() and folder_name.begins_with("chunk_"):
-			# Parse chunk coordinates from folder name: chunk_X_Y
-			var parts := folder_name.trim_prefix("chunk_").split("_")
-			if parts.size() == 2:
-				var coords := Vector2i(int(parts[0]), int(parts[1]))
-				# If chunk doesn't exist in scene, mark for deletion
-				if not chunks.has(coords):
-					orphaned_dirs.append(dir_path + folder_name + "/")
-		folder_name = dir.get_next()
-	dir.list_dir_end()
-
-	# Delete orphaned directories
-	for orphaned_dir in orphaned_dirs:
-		_delete_chunk_directory(orphaned_dir)
-		print_verbose("MarchingSquaresTerrain: Cleaned up orphaned chunk at ", orphaned_dir)
-
-
-## Delete a chunk directory and all its contents
-func _delete_chunk_directory(chunk_dir: String) -> void:
-	var dir := DirAccess.open(chunk_dir)
-	if not dir:
-		return
-
-	# Delete all files in directory
-	dir.list_dir_begin()
-	var file_name := dir.get_next()
-	while file_name != "":
-		if not dir.current_is_dir():
-			var err := dir.remove(file_name)
-			if err != OK:
-				printerr("MarchingSquaresTerrain: Failed to delete file ", file_name, " in ", chunk_dir)
-		file_name = dir.get_next()
-	dir.list_dir_end()
-
-	# Remove the directory itself
-	var err := DirAccess.remove_absolute(chunk_dir.trim_suffix("/"))
-	if err != OK:
-		printerr("MarchingSquaresTerrain: Failed to delete directory ", chunk_dir)
-
-
-## Load a single chunk's metadata from external .res file
-func load_chunk_data(coords: Vector2i) -> ChunkData:
-	var dir_path := get_data_directory()
-	if dir_path.is_empty():
-		return null
-
-	var chunk_dir := dir_path + "chunk_%d_%d/" % [coords.x, coords.y]
-	var metadata_path := chunk_dir + "metadata.res"
-
-	if not FileAccess.file_exists(metadata_path):
-		# Try legacy format for backward compatibility
-		var legacy_path := FileUtils.get_chunk_file_path(dir_path, coords)
-		if FileAccess.file_exists(legacy_path):
-			var data = load(legacy_path)
-			if data is ChunkData:
-				return data
-		return null
-
-	var data = load(metadata_path)
-	if data is ChunkData:
-		return data
-	else:
-		printerr("MarchingSquaresTerrain: Invalid chunk data at ", metadata_path)
-		return null
-
-
-## Load all terrain data from external files
-func _load_terrain_data() -> void:
-	var dir_path := get_data_directory()
-	if dir_path.is_empty():
-		return
-
-	# Scan for chunk directories (new format: chunk_X_Y/)
-	var dir := DirAccess.open(dir_path)
-	if not dir:
-		return
-
-	var chunk_dirs : Array[Vector2i] = []
-	dir.list_dir_begin()
-	var folder_name := dir.get_next()
-	while folder_name != "":
-		if dir.current_is_dir() and folder_name.begins_with("chunk_"):
-			# Parse chunk coordinates from folder name: chunk_X_Y
-			var parts := folder_name.trim_prefix("chunk_").split("_")
-			if parts.size() == 2:
-				var coords := Vector2i(int(parts[0]), int(parts[1]))
-				chunk_dirs.append(coords)
-		folder_name = dir.get_next()
-	dir.list_dir_end()
-
-	# Fall back to legacy format if no chunk directories found
-	if chunk_dirs.is_empty():
-		var chunk_files := FileUtils.get_chunk_files_in_directory(dir_path)
-		if not chunk_files.is_empty():
-			print_verbose("MarchingSquaresTerrain: Loading ", chunk_files.size(), " chunk(s) from legacy format")
-			for coords in chunk_files:
-				_load_chunk_legacy(coords)
-			_storage_initialized = true
-		return
-
-	print_verbose("MarchingSquaresTerrain: Loading ", chunk_dirs.size(), " chunk(s) from ", dir_path)
-
-	for coords in chunk_dirs:
-		_load_chunk_from_directory(coords)
-
-	_storage_initialized = true
-
-
-## Load a single chunk from its resource directory (new format)
-func _load_chunk_from_directory(coords: Vector2i) -> void:
-	var dir_path := get_data_directory()
-	var chunk_dir := dir_path + "chunk_%d_%d/" % [coords.x, coords.y]
-
-	# Get or create chunk
-	var chunk : MarchingSquaresTerrainChunk = chunks.get(coords)
-	if not chunk:
-		# Chunk should already exist in scene - external storage doesn't create new chunks
-		# This case handles when scene was saved without chunks (shouldn't happen normally)
-		return
-
-	# Load metadata first (height_map, color_maps, etc.)
-	var metadata_path := chunk_dir + "metadata.res"
-	if ResourceLoader.exists(metadata_path):
-		var data : ChunkData = load(metadata_path)
-		if data:
-			chunk.from_chunk_data(data)
-
-	# Load mesh (resource already has resource_path from file)
-	var mesh_path := chunk_dir + "mesh.res"
-	if ResourceLoader.exists(mesh_path):
-		chunk.mesh = load(mesh_path)
-		if chunk.mesh and terrain_material:
-			chunk.mesh.surface_set_material(0, terrain_material)
-
-	# Load collision
-	var collision_path := chunk_dir + "collision.res"
-	if ResourceLoader.exists(collision_path):
-		var shape = load(collision_path)
-		if shape is ConcavePolygonShape3D:
-			chunk._apply_collision_shape(shape)
-
-	# Load grass multimesh
-	var grass_path := chunk_dir + "grass_multimesh.res"
-	if ResourceLoader.exists(grass_path) and chunk.grass_planter:
-		chunk.grass_planter.multimesh = load(grass_path)
-
-	print_verbose("MarchingSquaresTerrain: Loaded chunk ", coords, " from ", chunk_dir)
-
-
-## Load a single chunk from legacy single-file format
-func _load_chunk_legacy(coords: Vector2i) -> void:
-	var data : ChunkData = load_chunk_data(coords)
-	if not data:
-		return
-
-	var chunk : MarchingSquaresTerrainChunk = chunks.get(coords)
-	if chunk:
-		chunk.from_chunk_data(data)
-
-
-## Check if this terrain needs migration from embedded to external storage
-func _needs_migration() -> bool:
-	# If already initialized with external storage, no migration needed
-	if _storage_initialized:
-		return false
-
-	# Check if any chunks have embedded data but no external files exist
-	var dir_path := get_data_directory()
-	if dir_path.is_empty():
-		return false
-
-	for chunk_coords in chunks:
-		var chunk : MarchingSquaresTerrainChunk = chunks[chunk_coords]
-		# If chunk has height_map data but no external resources, migration is needed
-		if chunk.height_map and not chunk.height_map.is_empty():
-			if not _chunk_resources_exist(chunk_coords):
-				return true
-
-	return false
-
-
-## Migrate existing embedded data to external storage
-func _migrate_to_external_storage() -> void:
-	print("MarchingSquaresTerrain: Migrating to external storage...")
-
-	# Mark all chunks as dirty to force save
-	for chunk_coords in chunks:
-		var chunk : MarchingSquaresTerrainChunk = chunks[chunk_coords]
-		chunk._data_dirty = true
-
-	# Save all chunks externally
-	_save_all_chunks_externally()
-
-	print("MarchingSquaresTerrain: Migration complete. External data saved to: ", get_data_directory())
+## Deferred wrapper for loading terrain data (used by data_directory setter)
+func _deferred_load_terrain_data() -> void:
+	MSTDataHandler.load_terrain_data(self)
