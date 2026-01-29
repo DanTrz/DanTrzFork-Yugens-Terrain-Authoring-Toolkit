@@ -102,6 +102,7 @@ var needs_update : Array[Array] # Stores which tiles need to be updated because 
 var _skip_save_on_exit : bool = false # Set to true when chunk is removed temporarily (undo/redo)
 var _data_dirty : bool = false # Set to true when chunk data needs saving to external file
 var _is_exiting_tree : bool = false # Set to true in _exit_tree to skip deferred callbacks during scene close
+var _visibility_notifier : VisibleOnScreenNotifier3D # For lazy grass loading at runtime
 
 # Temporary storage for resources during scene save 
 # prevents from serializing these resources into the scene file
@@ -117,6 +118,7 @@ var blend_zone = upper_thresh - lower_thresh
 
 # Called by TerrainSystem parent
 func initialize_terrain(should_regenerate_mesh: bool = true):
+	print("[GRASS DEBUG] initialize_terrain() chunk ", chunk_coords, " is_editor=", Engine.is_editor_hint())
 	needs_update = []
 	# Initally all cells will need to be updated to show the newly loaded height
 	for z in range(dimensions.z - 1):
@@ -128,6 +130,8 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 		grass_planter = get_node_or_null("GrassPlanter")
 		if grass_planter:
 			grass_planter._chunk = self
+
+	print("[GRASS DEBUG] Chunk ", chunk_coords, " grass_planter = ", grass_planter)
 
 	# Generate missing data maps (for new chunks or if external data didn't load)
 	if not height_map:
@@ -149,7 +153,7 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 			child.collision_layer = 17 # ground (1) + terrain (16)
 
 	# Setup and regenerate grass
-	# Skip regeneration if multimesh was already loaded 
+	# Skip regeneration if multimesh was already loaded
 	if grass_planter:
 		var needs_grass_regeneration := true
 		if grass_planter.multimesh and grass_planter.multimesh.instance_count > 0:
@@ -158,19 +162,115 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 			grass_planter._chunk = self
 			grass_planter.terrain_system = terrain_system
 
+		print("[GRASS DEBUG] Chunk ", chunk_coords, " needs_grass_regeneration = ", needs_grass_regeneration)
 		if needs_grass_regeneration:
 			grass_planter.setup(self, true)
-			grass_planter.regenerate_all_cells()
+			if Engine.is_editor_hint():
+				# In editor: blocking regeneration to keep editing responsive
+				grass_planter.regenerate_all_cells()
+			# At runtime: visibility notifier triggers grass generation (lazy loading)
+
+	# Setup visibility-based grass loading (runtime only)
+	print("[GRASS DEBUG] Chunk ", chunk_coords, " about to check Engine.is_editor_hint() for visibility notifier")
+	if not Engine.is_editor_hint():
+		print("[GRASS DEBUG] Chunk ", chunk_coords, " calling _setup_visibility_notifier()")
+		_setup_visibility_notifier()
+	else:
+		print("[GRASS DEBUG] Chunk ", chunk_coords, " SKIPPING visibility notifier (editor mode)")
+
+
+## Setup visibility notifier for lazy grass loading (runtime only)
+func _setup_visibility_notifier() -> void:
+	if _visibility_notifier:
+		return  # Already set up
+
+	print("[GRASS DEBUG] Chunk ", chunk_coords, " _setup_visibility_notifier() called")
+
+	_visibility_notifier = VisibleOnScreenNotifier3D.new()
+
+	# Set AABB to cover chunk area
+	var chunk_size := Vector3(
+		(dimensions.x - 1) * cell_size.x,
+		float(dimensions.y),
+		(dimensions.z - 1) * cell_size.y
+	)
+	_visibility_notifier.aabb = AABB(Vector3.ZERO, chunk_size)
+	add_child(_visibility_notifier)
+
+	print("[GRASS DEBUG] Chunk ", chunk_coords, " notifier AABB = ", _visibility_notifier.aabb)
+
+	_visibility_notifier.screen_entered.connect(_on_became_visible)
+	_visibility_notifier.screen_exited.connect(_on_became_hidden)
+
+	# Deferred check for initial visibility - Godot needs a frame to detect visibility
+	# The screen_entered signal only fires on transitions, not if already visible
+	call_deferred("_check_initial_visibility")
+
+
+## Called deferred after visibility notifier is set up to check initial visibility
+func _check_initial_visibility() -> void:
+	if _is_exiting_tree:
+		print("[GRASS DEBUG] Chunk ", chunk_coords, " _check_initial_visibility() - SKIPPED (exiting tree)")
+		return
+	var on_screen := _visibility_notifier.is_on_screen() if _visibility_notifier else false
+	print("[GRASS DEBUG] Chunk ", chunk_coords, " _check_initial_visibility() is_on_screen=", on_screen)
+	if _visibility_notifier and on_screen:
+		_on_became_visible()
+
+
+func _on_became_visible() -> void:
+	print("[GRASS DEBUG] Chunk ", chunk_coords, " _on_became_visible() called")
+	if not grass_planter:
+		print("[GRASS DEBUG] Chunk ", chunk_coords, " - NO grass_planter!")
+		return
+	# Start progressive grass if not already generated
+	var has_grass := grass_planter.has_grass()
+	var is_loading := grass_planter._is_loading_progressively
+	print("[GRASS DEBUG] Chunk ", chunk_coords, " has_grass=", has_grass, " is_loading=", is_loading)
+	if not has_grass and not is_loading:
+		print("[GRASS DEBUG] Chunk ", chunk_coords, " - STARTING progressive regeneration")
+		grass_planter.start_progressive_regeneration()
+
+
+func _on_became_hidden() -> void:
+	# Keep grass when hidden (already generated)
+	# Distance-based unloading is handled by terrain system if enabled
+	pass
 
 
 func _exit_tree() -> void:
-	# Mark as exiting to skip deferred callbacks (prevents physics thrashing on scene close)
+	# Mark as exiting to skip deferred callbacks
 	_is_exiting_tree = true
-	# Only erase if terrain_system still has THIS chunk at chunk_coords
+
+	# AT RUNTIME: Hide grass immediately (fast visual cleanup)
+	if not Engine.is_editor_hint():
+		if grass_planter:
+			grass_planter.visible = false
+
+	# Remove from terrain's chunk dictionary
 	if terrain_system and terrain_system.chunks.get(chunk_coords) == self:
 		terrain_system.chunks.erase(chunk_coords)
 
+
 func _notification(what: int) -> void:
+	# HARD CLEANUP (PREDELETE - final resource deallocation)
+	if what == NOTIFICATION_PREDELETE:
+		if not Engine.is_editor_hint():
+			# Free resources in dependency order: grass → collision → mesh
+			if grass_planter and grass_planter.multimesh:
+				grass_planter.multimesh = null
+
+			for child in get_children():
+				if child is StaticBody3D:
+					for shape_child in child.get_children():
+						if shape_child is CollisionShape3D:
+							shape_child.shape = null
+					break
+
+			mesh = null
+		return
+
+	# Editor-only notifications below
 	if not Engine.is_editor_hint():
 		return
 

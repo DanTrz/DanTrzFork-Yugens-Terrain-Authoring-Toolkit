@@ -5,6 +5,17 @@ class_name GrassPlanter
 
 var _chunk : MarchingSquaresTerrainChunk
 var terrain_system : MarchingSquaresTerrain
+var _rng : RandomNumberGenerator
+
+# Progressive loading state
+var _pending_cells : Array[Vector2i] = []
+var _is_loading_progressively : bool = false
+var _cells_per_frame : int = 32  # Process 32 cells per frame (~60fps = ~2000 cells/sec, ~0.5s per chunk)
+var _grass_generated : bool = false  # True only after grass transforms are actually set
+
+
+func _ready() -> void:
+	set_process(false)  # Disabled by default
 
 
 func setup(chunk: MarchingSquaresTerrainChunk, redo: bool = true):
@@ -17,6 +28,7 @@ func setup(chunk: MarchingSquaresTerrainChunk, redo: bool = true):
 	
 	if (redo and multimesh) or !multimesh:
 		multimesh = MultiMesh.new()
+		_grass_generated = false  # Reset flag when creating new multimesh
 	multimesh.instance_count = 0
 	
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
@@ -31,25 +43,127 @@ func setup(chunk: MarchingSquaresTerrainChunk, redo: bool = true):
 	cast_shadow = SHADOW_CASTING_SETTING_OFF
 
 
+## Start progressive grass regeneration (non-blocking)
+## Grass will "grow in" over several seconds while scene is playable
+func start_progressive_regeneration() -> void:
+	print("[GRASS DEBUG] start_progressive_regeneration() called for chunk ", _chunk.chunk_coords if _chunk else "NULL")
+	if _is_loading_progressively:
+		print("[GRASS DEBUG] - Already loading, skipping")
+		return
+
+	# Safety checks
+	if not _chunk or not terrain_system:
+		printerr("ERROR: GrassPlanter not set up for progressive regeneration")
+		return
+
+	if not multimesh:
+		print("[GRASS DEBUG] - No multimesh, calling setup()")
+		setup(_chunk)
+
+	# cell_geometry is populated during regenerate_mesh() - if empty, we need to regenerate
+	print("[GRASS DEBUG] - cell_geometry.is_empty() = ", _chunk.cell_geometry.is_empty())
+	if _chunk.cell_geometry.is_empty():
+		print("[GRASS DEBUG] - Regenerating mesh to populate cell_geometry")
+		_chunk.regenerate_mesh()
+		print("[GRASS DEBUG] - After regenerate_mesh(), cell_geometry.is_empty() = ", _chunk.cell_geometry.is_empty())
+
+	# Queue all cells
+	_pending_cells.clear()
+	for z in range(terrain_system.dimensions.z - 1):
+		for x in range(terrain_system.dimensions.x - 1):
+			_pending_cells.append(Vector2i(x, z))
+
+	# Sort cells by distance from camera (nearest first) for better visual experience
+	_sort_cells_by_camera_distance()
+
+	print("[GRASS DEBUG] - Queued ", _pending_cells.size(), " cells for progressive generation")
+	print("[GRASS DEBUG] - multimesh.instance_count = ", multimesh.instance_count if multimesh else "NULL")
+
+	_is_loading_progressively = true
+	set_process(true)
+	print("[GRASS DEBUG] - set_process(true) called, _is_loading_progressively = true")
+
+
+## Sort pending cells by distance from camera (nearest first)
+## This ensures grass appears first where the player is looking
+func _sort_cells_by_camera_distance() -> void:
+	var camera := _chunk.get_viewport().get_camera_3d() if _chunk else null
+	if not camera:
+		return  # Keep default order if no camera
+
+	var camera_pos := camera.global_position
+	var chunk_origin := _chunk.global_position
+	var cell_size := terrain_system.cell_size
+
+	# Sort by squared distance (faster than sqrt)
+	_pending_cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var pos_a := chunk_origin + Vector3(a.x * cell_size.x, 0, a.y * cell_size.y)
+		var pos_b := chunk_origin + Vector3(b.x * cell_size.x, 0, b.y * cell_size.y)
+		return pos_a.distance_squared_to(camera_pos) < pos_b.distance_squared_to(camera_pos)
+	)
+
+
+var _debug_first_process := true
+func _process(_delta: float) -> void:
+	if not _is_loading_progressively:
+		set_process(false)
+		return
+
+	if _debug_first_process:
+		print("[GRASS DEBUG] _process() FIRST CALL for chunk ", _chunk.chunk_coords if _chunk else "NULL", " - pending cells: ", _pending_cells.size())
+		_debug_first_process = false
+
+	# Process a few cells per frame
+	for i in range(_cells_per_frame):
+		if _pending_cells.is_empty():
+			print("[GRASS DEBUG] _process() DONE for chunk ", _chunk.chunk_coords if _chunk else "NULL")
+			_is_loading_progressively = false
+			_grass_generated = true  # Mark as complete
+			set_process(false)
+			_debug_first_process = true  # Reset for next time
+			return
+
+		var cell := _pending_cells.pop_front()
+		generate_grass_on_cell(cell)
+
+
+## Clear all grass (for memory savings when chunk is far from camera)
+func clear_grass() -> void:
+	_is_loading_progressively = false
+	_grass_generated = false
+	_pending_cells.clear()
+	set_process(false)
+	if multimesh:
+		multimesh.instance_count = 0
+
+
+## Check if grass has been generated (not just allocated)
+func has_grass() -> bool:
+	return _grass_generated
+
+
 func regenerate_all_cells() -> void:
 	# Safety checks:
 	if not _chunk:
 		printerr("ERROR: _chunk not set while regenerating cells")
 		return
-	
+
 	if not terrain_system:
 		printerr("ERROR: terrain_system not set while regenerating cells")
 		return
-	
+
 	if not multimesh:
 		setup(_chunk)
-	
-	if not _chunk.cell_geometry:
+
+	# cell_geometry is populated during regenerate_mesh
+	if _chunk.cell_geometry.is_empty():
 		_chunk.regenerate_mesh()
-	
+
 	for z in range(terrain_system.dimensions.z-1):
 		for x in range(terrain_system.dimensions.x-1):
 			generate_grass_on_cell(Vector2i(x, z))
+
+	_grass_generated = true  # Mark as complete
 
 
 func generate_grass_on_cell(cell_coords: Vector2i) -> void:
@@ -57,33 +171,37 @@ func generate_grass_on_cell(cell_coords: Vector2i) -> void:
 	if not _chunk:
 		printerr("ERROR: GrassPlanter couldn't find a reference to _chunk")
 		return
-	
+
 	if not terrain_system:
 		printerr("ERROR: GrassPlanter couldn't find a reference to terrain_system")
 		return
-	
+
 	if not _chunk.cell_geometry:
 		printerr("ERROR: GrassPlatner couldn't find a reference to cell_geometry")
 		return
-	
+
 	if not _chunk.cell_geometry.has(cell_coords):
 		printerr("ERROR: GrassPlanter couldn't find a reference to cell_coords")
 		return
-	
+
 	var cell_geometry = _chunk.cell_geometry[cell_coords]
-	
+
 	if not cell_geometry.has("verts") or not cell_geometry.has("uvs") or not cell_geometry.has("colors_0") or not cell_geometry.has("colors_1") or not cell_geometry.has("grass_mask") or not cell_geometry.has("is_floor"):
 		printerr("ERROR: [GrassPlanter] cell_geometry doesn't have one of the following required data: 1) verts, 2) uvs, 3) colors, 4) grass_mask, 5) is_floor")
 		return
-	
+
+	# Seed RNG for deterministic grass placement
+	_rng = RandomNumberGenerator.new()
+	_rng.seed = hash(Vector3i(_chunk.chunk_coords.x, _chunk.chunk_coords.y, cell_coords.x * 1000 + cell_coords.y))
+
 	var points: PackedVector2Array = []
 	var count = terrain_system.grass_subdivisions * terrain_system.grass_subdivisions
-	
+
 	for z in range(terrain_system.grass_subdivisions):
 		for x in range(terrain_system.grass_subdivisions):
 			points.append(Vector2(
-				(cell_coords.x + (x + randf_range(0, 1)) / terrain_system.grass_subdivisions) * terrain_system.cell_size.x,
-				(cell_coords.y + (z + randf_range(0, 1)) / terrain_system.grass_subdivisions) * terrain_system.cell_size.y
+				(cell_coords.x + (x + _rng.randf_range(0, 1)) / terrain_system.grass_subdivisions) * terrain_system.cell_size.x,
+				(cell_coords.y + (z + _rng.randf_range(0, 1)) / terrain_system.grass_subdivisions) * terrain_system.cell_size.y
 			))
 	
 	var index: int = (cell_coords.y * (_chunk.dimensions.x-1) + cell_coords.x) * count
@@ -262,28 +380,8 @@ func generate_grass_on_cell(cell_coords: Vector2i) -> void:
 
 
 func _get_terrain_image(texture_id: int) -> Image:
-	var terrain_texture : Texture2D = null
-	var material = terrain_system.terrain_material
-	match texture_id:
-		2:
-			terrain_texture = material.get_shader_parameter("vc_tex_rg")
-		3:
-			terrain_texture = material.get_shader_parameter("vc_tex_rb")
-		4:
-			terrain_texture = material.get_shader_parameter("vc_tex_ra")
-		5:
-			terrain_texture = material.get_shader_parameter("vc_tex_gr")
-		6:
-			terrain_texture = material.get_shader_parameter("vc_tex_gg")
-		_: # Base grass
-			terrain_texture = material.get_shader_parameter("vc_tex_rr")
-	if terrain_texture == null:
-		printerr("ERROR: [GrassPlanter] couldn't find the terrain's ShaderMaterial texture " + str(texture_id))
-		return null
-	
-	var img : Image = terrain_texture.get_image()
-	img.decompress()
-	return img
+	# Use cached decompressed images from terrain system
+	return terrain_system.get_cached_texture_image(texture_id)
 
 
 func _get_texture_id(vc_col_0: Color, vc_col_1: Color) -> int:

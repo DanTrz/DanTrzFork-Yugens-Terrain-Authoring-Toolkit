@@ -81,23 +81,10 @@ static func save_all_chunks(terrain: MarchingSquaresTerrain) -> void:
 
 		# Determine if chunk needs saving:
 		# 1. Chunk is marked dirty (terrain was edited)
-		# 2. External files don't exist yet
-		# 3. Any resource exists but lost its resource_path (regenerated)
+		# 2. Metadata doesn't exist yet
 		var needs_save : bool = chunk._data_dirty
-		if not needs_save and not chunk_resources_exist(terrain, chunk_coords):
+		if not needs_save and not metadata_exists(terrain, chunk_coords):
 			needs_save = true
-		# Check if mesh lost its external path (regenerated during terrain edit)
-		if not needs_save and chunk.mesh and chunk.mesh.resource_path.is_empty():
-			needs_save = true
-		# Check if collision shape lost its external path
-		if not needs_save:
-			var collision_shape := get_collision_shape(chunk)
-			if collision_shape and collision_shape.resource_path.is_empty():
-				needs_save = true
-		# Check if grass multimesh lost its external path
-		if not needs_save and chunk.grass_planter and chunk.grass_planter.multimesh:
-			if chunk.grass_planter.multimesh.resource_path.is_empty():
-				needs_save = true
 
 		if needs_save:
 			save_chunk_resources(terrain, chunk)
@@ -113,41 +100,19 @@ static func save_all_chunks(terrain: MarchingSquaresTerrain) -> void:
 	terrain._storage_initialized = true
 
 
-## Save a chunk's ephemeral resources (mesh, collision, multimesh) to external files
+## Save chunk data with hybrid storage
 static func save_chunk_resources(terrain: MarchingSquaresTerrain, chunk) -> void:
 	var dir_path := get_data_directory(terrain)
 	if dir_path.is_empty():
 		printerr("MSTDataHandler: Cannot save chunk - no valid data directory")
 		return
 
-	var chunk_dir := dir_path + "chunk_%d_%d/" % [chunk.chunk_coords.x, chunk.chunk_coords.y]
+	var chunk_name := "chunk_%d_%d" % [chunk.chunk_coords.x, chunk.chunk_coords.y]
+	var chunk_dir := dir_path + chunk_name + "/"
 	ensure_directory_exists(chunk_dir)
 
-	# 1. Save mesh (ephemeral - not in Godot's cache, so no conflict)
-	if chunk.mesh:
-		var mesh_path := chunk_dir + "mesh.res"
-		var err := ResourceSaver.save(chunk.mesh, mesh_path, ResourceSaver.FLAG_COMPRESS)
-		if err != OK:
-			printerr("MSTDataHandler: Failed to save mesh to ", mesh_path)
-
-	# 2. Save collision shape (ephemeral - not in Godot's cache)
-	var collision_shape : ConcavePolygonShape3D = get_collision_shape(chunk)
-	if collision_shape:
-		var collision_path := chunk_dir + "collision.res"
-		var err := ResourceSaver.save(collision_shape, collision_path, ResourceSaver.FLAG_COMPRESS)
-		if err != OK:
-			printerr("MSTDataHandler: Failed to save collision to ", collision_path)
-
-	# 3. Save grass multimesh (ephemeral - not in Godot's cache)
-	if chunk.grass_planter and chunk.grass_planter.multimesh:
-		var grass_path := chunk_dir + "grass_multimesh.res"
-		var err := ResourceSaver.save(chunk.grass_planter.multimesh, grass_path, ResourceSaver.FLAG_COMPRESS)
-		if err != OK:
-			printerr("MSTDataHandler: Failed to save grass multimesh to ", grass_path)
-
-	# 4. Save chunk metadata (height_map, color_maps, etc.) - these stay bundled
+	# Save metadata / source data only (mesh, collision, grass regenerated on load)
 	var data : ChunkData = MSTDataHandler.export_chunk_data(chunk)
-	# Don't duplicate the heavy resources in metadata - they're saved separately
 	data.mesh = null
 	data.grass_multimesh = null
 	data.collision_faces = PackedVector3Array()
@@ -155,8 +120,8 @@ static func save_chunk_resources(terrain: MarchingSquaresTerrain, chunk) -> void
 	var err := ResourceSaver.save(data, metadata_path, ResourceSaver.FLAG_COMPRESS)
 	if err != OK:
 		printerr("MSTDataHandler: Failed to save metadata to ", metadata_path)
-	else:
-		print_verbose("MSTDataHandler: Saved chunk ", chunk.chunk_coords, " to ", chunk_dir)
+
+	print_verbose("MSTDataHandler: Saved chunk ", chunk.chunk_coords)
 
 
 # LOAD OPERATIONS
@@ -202,50 +167,25 @@ static func load_terrain_data(terrain: MarchingSquaresTerrain) -> void:
 	terrain._storage_initialized = true
 
 
-## Load a single chunk from its resource directory (new format)
+## Load a single chunk's source data from metadata file
+## Mesh, collision, and grass are regenerated separately
 static func load_chunk_from_directory(terrain: MarchingSquaresTerrain, coords: Vector2i) -> void:
 	var dir_path := get_data_directory(terrain)
-	var chunk_dir := dir_path + "chunk_%d_%d/" % [coords.x, coords.y]
+	var chunk_name := "chunk_%d_%d" % [coords.x, coords.y]
+	var chunk_dir := dir_path + chunk_name + "/"
 
-	# Get or create chunk (untyped to avoid cyclic reference)
 	var chunk = terrain.chunks.get(coords)
 	if not chunk:
-		# Chunk should already exist in scene - external storage doesn't create new chunks
 		return
 
-	# Load metadata (height_map, color_maps, etc.)
+	# Load metadata source data only
 	var metadata_path := chunk_dir + "metadata.res"
 	if ResourceLoader.exists(metadata_path):
 		var data : ChunkData = load(metadata_path)
 		if data:
 			import_chunk_data(chunk, data)
 
-	# AT RUNTIME: Load pre-saved mesh/collision/grass with CACHE_MODE_IGNORE(Same pattern as Terrain3D)
-	# AT EDITOR: Skip loading - will be regenerated to avoid cache issues during save
-	if not Engine.is_editor_hint():
-		# Load mesh (no cache - faster cleanup on exit)
-		var mesh_path := chunk_dir + "mesh.res"
-		if ResourceLoader.exists(mesh_path):
-			chunk.mesh = ResourceLoader.load(mesh_path, "", ResourceLoader.CACHE_MODE_IGNORE)
-			chunk.material_override = terrain.terrain_material
-
-		# Load collision (no cache - faster cleanup on exit)
-		var collision_path := chunk_dir + "collision.res"
-		if ResourceLoader.exists(collision_path):
-			var shape : ConcavePolygonShape3D = ResourceLoader.load(collision_path, "", ResourceLoader.CACHE_MODE_IGNORE)
-			if shape:
-				apply_collision_shape(chunk, shape)
-
-		# Load grass multimesh (no cache - faster cleanup on exit)
-		var grass_path := chunk_dir + "grass_multimesh.res"
-		if ResourceLoader.exists(grass_path):
-			# Ensure grass_planter exists
-			if not chunk.grass_planter:
-				chunk.grass_planter = chunk.get_node_or_null("GrassPlanter")
-			if chunk.grass_planter:
-				chunk.grass_planter.multimesh = ResourceLoader.load(grass_path, "", ResourceLoader.CACHE_MODE_IGNORE)
-
-	print_verbose("MSTDataHandler: Loaded chunk ", coords, " from ", chunk_dir)
+	print_verbose("MSTDataHandler: Loaded chunk ", coords)
 
 
 ## Load a single chunk from legacy single-file format
@@ -343,12 +283,16 @@ static func delete_chunk_directory(chunk_dir: String) -> void:
 
 
 # UTILITY OPERATIONS
-## Check if all resource files exist for a chunk
-static func chunk_resources_exist(terrain: MarchingSquaresTerrain, coords: Vector2i) -> bool:
+## Check if metadata.res exists for a chunk
+static func metadata_exists(terrain: MarchingSquaresTerrain, coords: Vector2i) -> bool:
 	var dir_path := get_data_directory(terrain)
 	var chunk_dir := dir_path + "chunk_%d_%d/" % [coords.x, coords.y]
-	# At minimum, mesh.res should exist for a valid saved chunk
-	return FileAccess.file_exists(chunk_dir + "mesh.res")
+	return FileAccess.file_exists(chunk_dir + "metadata.res")
+
+
+## Check if chunk resources exist (checks metadata)
+static func chunk_resources_exist(terrain: MarchingSquaresTerrain, coords: Vector2i) -> bool:
+	return metadata_exists(terrain, coords)
 
 
 ## Check if this terrain needs migration from embedded to external storage
@@ -394,11 +338,23 @@ static func export_chunk_data(chunk) -> ChunkData:
 
 	# Source data (deep copy for arrays)
 	data.height_map = chunk.height_map.duplicate(true)
-	data.color_map_0 = chunk.color_map_0.duplicate()
-	data.color_map_1 = chunk.color_map_1.duplicate()
-	data.wall_color_map_0 = chunk.wall_color_map_0.duplicate()
-	data.wall_color_map_1 = chunk.wall_color_map_1.duplicate()
-	data.grass_mask_map = chunk.grass_mask_map.duplicate()
+	# Convert to compact v2 format (1 byte per cell instead of 16)
+	var cell_count : int = chunk.color_map_0.size()
+	data.ground_texture_idx.resize(cell_count)
+	data.wall_texture_idx.resize(cell_count)
+	data.grass_mask.resize(cell_count)
+
+	for i in cell_count:
+		data.ground_texture_idx[i] = _colors_to_texture_idx(chunk.color_map_0[i], chunk.color_map_1[i])
+		data.wall_texture_idx[i] = _colors_to_texture_idx(chunk.wall_color_map_0[i], chunk.wall_color_map_1[i])
+		data.grass_mask[i] = 1 if chunk.grass_mask_map[i].r > 0.5 else 0
+
+	# Clear legacy arrays (not needed in v2)
+	data.color_map_0 = PackedColorArray()
+	data.color_map_1 = PackedColorArray()
+	data.wall_color_map_0 = PackedColorArray()
+	data.wall_color_map_1 = PackedColorArray()
+	data.grass_mask_map = PackedColorArray()
 
 	# Generated data
 	data.mesh = chunk.mesh
@@ -415,8 +371,6 @@ static func export_chunk_data(chunk) -> ChunkData:
 	if chunk.grass_planter and chunk.grass_planter.multimesh:
 		data.grass_multimesh = chunk.grass_planter.multimesh
 
-	data.cell_geometry = chunk.cell_geometry.duplicate(true)
-
 	return data
 
 
@@ -428,20 +382,42 @@ static func import_chunk_data(chunk, data: ChunkData) -> void:
 
 	chunk.chunk_coords = data.chunk_coords
 	chunk.merge_mode = data.merge_mode
-
-	# Source data
 	chunk.height_map = data.height_map.duplicate(true)
-	chunk.color_map_0 = data.color_map_0.duplicate()
-	chunk.color_map_1 = data.color_map_1.duplicate()
-	chunk.wall_color_map_0 = data.wall_color_map_0.duplicate()
-	chunk.wall_color_map_1 = data.wall_color_map_1.duplicate()
-	chunk.grass_mask_map = data.grass_mask_map.duplicate()
 
-	# Cell geometry cache
-	if not data.cell_geometry.is_empty():
-		chunk.cell_geometry = data.cell_geometry.duplicate(true)
+	# Check format version
+	var is_v2 : bool = not data.ground_texture_idx.is_empty()
 
-	chunk._data_dirty = false
+	if is_v2:
+		# V2 compact format: expand bytes to Colors
+		var cell_count : int = data.ground_texture_idx.size()
+		chunk.color_map_0.resize(cell_count)
+		chunk.color_map_1.resize(cell_count)
+		chunk.wall_color_map_0.resize(cell_count)
+		chunk.wall_color_map_1.resize(cell_count)
+		chunk.grass_mask_map.resize(cell_count)
+
+		for i in cell_count:
+			var ground_colors : Array = _texture_idx_to_colors(data.ground_texture_idx[i])
+			chunk.color_map_0[i] = ground_colors[0]
+			chunk.color_map_1[i] = ground_colors[1]
+
+			var wall_colors : Array = _texture_idx_to_colors(data.wall_texture_idx[i])
+			chunk.wall_color_map_0[i] = wall_colors[0]
+			chunk.wall_color_map_1[i] = wall_colors[1]
+
+			chunk.grass_mask_map[i] = Color(1, 0, 0, 0) if data.grass_mask[i] > 0 else Color(0, 0, 0, 0)
+
+		chunk._data_dirty = true  # Force re-save to update any migrated data
+	else:
+		# V1 legacy format: direct copy
+		chunk.color_map_0 = data.color_map_0.duplicate()
+		chunk.color_map_1 = data.color_map_1.duplicate()
+		chunk.wall_color_map_0 = data.wall_color_map_0.duplicate()
+		chunk.wall_color_map_1 = data.wall_color_map_1.duplicate()
+		chunk.grass_mask_map = data.grass_mask_map.duplicate()
+		chunk._data_dirty = true  # Force re-save in v2 format
+
+	# cell_geometry is regenerated during mesh generation
 
 
 ## Get the current collision shape from a chunk (if any)
@@ -533,3 +509,40 @@ static func get_chunk_files_in_directory(dir_path: String) -> Dictionary:
 ## Get full path for a chunk file (legacy format)
 static func get_chunk_file_path(dir_path: String, coords: Vector2i) -> String:
 	return dir_path.path_join(coords_to_filename(coords))
+
+
+# COLOR CONVERSION HELPERS
+## Convert Color pair to texture index (0-15)
+static func _colors_to_texture_idx(c0: Color, c1: Color) -> int:
+	var c0_idx := 0
+	var c0_max := c0.r
+	if c0.g > c0_max: c0_max = c0.g; c0_idx = 1
+	if c0.b > c0_max: c0_max = c0.b; c0_idx = 2
+	if c0.a > c0_max: c0_idx = 3
+
+	var c1_idx := 0
+	var c1_max := c1.r
+	if c1.g > c1_max: c1_max = c1.g; c1_idx = 1
+	if c1.b > c1_max: c1_max = c1.b; c1_idx = 2
+	if c1.a > c1_max: c1_idx = 3
+
+	return c0_idx * 4 + c1_idx
+
+
+## Convert texture index (0-15) to Color pair
+static func _texture_idx_to_colors(idx: int) -> Array:
+	var c0 := Color(0, 0, 0, 0)
+	var c1 := Color(0, 0, 0, 0)
+	var c0_ch := idx / 4
+	var c1_ch := idx % 4
+	match c0_ch:
+		0: c0.r = 1.0
+		1: c0.g = 1.0
+		2: c0.b = 1.0
+		3: c0.a = 1.0
+	match c1_ch:
+		0: c1.r = 1.0
+		1: c1.g = 1.0
+		2: c1.b = 1.0
+		3: c1.a = 1.0
+	return [c0, c1]

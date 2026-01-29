@@ -443,6 +443,78 @@ var is_batch_updating : bool = false
 
 var chunks : Dictionary = {}
 
+# Cache for decompressed texture images (used by grass planter)
+var _texture_image_cache : Dictionary = {}
+
+# Distance-based grass unloading (runtime only)
+var _grass_cleanup_timer : float = 0.0
+@export var grass_unload_distance : float = 200.0  # Unload grass beyond this distance (0 = disabled)
+
+
+func get_cached_texture_image(texture_id: int) -> Image:
+	if _texture_image_cache.has(texture_id):
+		return _texture_image_cache[texture_id]
+
+	var tex : Texture2D = _get_texture_for_id(texture_id)
+	if tex == null:
+		return null
+
+	var img : Image = tex.get_image()
+	if img:
+		img.decompress()
+		_texture_image_cache[texture_id] = img
+	return img
+
+
+func _get_texture_for_id(texture_id: int) -> Texture2D:
+	match texture_id:
+		1: return ground_texture
+		2: return texture_2
+		3: return texture_3
+		4: return texture_4
+		5: return texture_5
+		6: return texture_6
+		7: return texture_7
+		8: return texture_8
+		9: return texture_9
+		10: return texture_10
+		11: return texture_11
+		12: return texture_12
+		13: return texture_13
+		14: return texture_14
+		15: return texture_15
+		_: return ground_texture
+
+
+func clear_texture_image_cache() -> void:
+	_texture_image_cache.clear()
+
+
+## Periodically unload grass from distant chunks to save memory (runtime only)
+func _process(delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
+
+	if grass_unload_distance <= 0.0:
+		return  # Disabled
+
+	# Check every 2 seconds
+	_grass_cleanup_timer += delta
+	if _grass_cleanup_timer < 2.0:
+		return
+	_grass_cleanup_timer = 0.0
+
+	var camera := get_viewport().get_camera_3d()
+	if not camera:
+		return
+
+	for chunk in chunks.values():
+		if not chunk.grass_planter:
+			continue
+		var dist : float = chunk.global_position.distance_to(camera.global_position)
+		if dist > grass_unload_distance and chunk.grass_planter.has_grass():
+			chunk.grass_planter.clear_grass()
+
 
 func _init() -> void:
 	# Create unique copies of shared resources for this node instance
@@ -738,11 +810,26 @@ func save_to_preset() -> void:
 	current_texture_preset.new_textures.has_grass[4] = tex6_has_grass
 
 
-## Handle editor notifications for external data storage
+## Handle notifications for cleanup and external data storage
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_EDITOR_PRE_SAVE:
-		if Engine.is_editor_hint():
-			MSTDataHandler.save_all_chunks(self)
+	match what:
+		NOTIFICATION_EXIT_TREE:
+			# Stage 1: SOFT CLEANUP (fast, reversible)
+			if not Engine.is_editor_hint():
+				# Hide all grass immediately for fast visual cleanup
+				for chunk in chunks.values():
+					if chunk.grass_planter:
+						chunk.grass_planter.visible = false
+
+		NOTIFICATION_PREDELETE:
+			# Stage 2: HARD CLEANUP (final deallocation)
+			# Chunks handle their own PREDELETE, but clear our dictionary
+			if not Engine.is_editor_hint():
+				chunks.clear()
+
+		NOTIFICATION_EDITOR_PRE_SAVE:
+			if Engine.is_editor_hint():
+				MSTDataHandler.save_all_chunks(self)
 
 
 ## Deferred wrapper for loading terrain data (used by data_directory setter)
