@@ -118,7 +118,7 @@ var blend_zone = upper_thresh - lower_thresh
 
 # Called by TerrainSystem parent
 func initialize_terrain(should_regenerate_mesh: bool = true):
-	print("[GRASS DEBUG] initialize_terrain() chunk ", chunk_coords, " is_editor=", Engine.is_editor_hint())
+	# print("[GRASS DEBUG] initialize_terrain() chunk ", chunk_coords, " is_editor=", Engine.is_editor_hint())
 	needs_update = []
 	# Initally all cells will need to be updated to show the newly loaded height
 	for z in range(dimensions.z - 1):
@@ -131,7 +131,7 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 		if grass_planter:
 			grass_planter._chunk = self
 
-	print("[GRASS DEBUG] Chunk ", chunk_coords, " grass_planter = ", grass_planter)
+	# print("[GRASS DEBUG] Chunk ", chunk_coords, " grass_planter = ", grass_planter)
 
 	# Generate missing data maps (for new chunks or if external data didn't load)
 	if not height_map:
@@ -161,22 +161,22 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 			needs_grass_regeneration = false
 			grass_planter._chunk = self
 			grass_planter.terrain_system = terrain_system
+			grass_planter._grass_generated = true  # Mark as already generated
 
-		print("[GRASS DEBUG] Chunk ", chunk_coords, " needs_grass_regeneration = ", needs_grass_regeneration)
 		if needs_grass_regeneration:
 			grass_planter.setup(self, true)
 			if Engine.is_editor_hint():
-				# In editor: blocking regeneration to keep editing responsive
-				grass_planter.regenerate_all_cells()
+				# In editor: use progressive loading instead of blocking
+				# Higher rate than runtime for faster fill-in
+				grass_planter._cells_per_frame = 256
+				grass_planter.start_progressive_regeneration()
 			# At runtime: visibility notifier triggers grass generation (lazy loading)
 
 	# Setup visibility-based grass loading (runtime only)
-	print("[GRASS DEBUG] Chunk ", chunk_coords, " about to check Engine.is_editor_hint() for visibility notifier")
+	# print("[GRASS DEBUG] Chunk ", chunk_coords, " about to check Engine.is_editor_hint() for visibility notifier")
 	if not Engine.is_editor_hint():
-		print("[GRASS DEBUG] Chunk ", chunk_coords, " calling _setup_visibility_notifier()")
+		# print("[GRASS DEBUG] Chunk ", chunk_coords, " calling _setup_visibility_notifier()")
 		_setup_visibility_notifier()
-	else:
-		print("[GRASS DEBUG] Chunk ", chunk_coords, " SKIPPING visibility notifier (editor mode)")
 
 
 ## Setup visibility notifier for lazy grass loading (runtime only)
@@ -184,7 +184,7 @@ func _setup_visibility_notifier() -> void:
 	if _visibility_notifier:
 		return  # Already set up
 
-	print("[GRASS DEBUG] Chunk ", chunk_coords, " _setup_visibility_notifier() called")
+	# print("[GRASS DEBUG] Chunk ", chunk_coords, " _setup_visibility_notifier() called")
 
 	_visibility_notifier = VisibleOnScreenNotifier3D.new()
 
@@ -197,7 +197,7 @@ func _setup_visibility_notifier() -> void:
 	_visibility_notifier.aabb = AABB(Vector3.ZERO, chunk_size)
 	add_child(_visibility_notifier)
 
-	print("[GRASS DEBUG] Chunk ", chunk_coords, " notifier AABB = ", _visibility_notifier.aabb)
+	# print("[GRASS DEBUG] Chunk ", chunk_coords, " notifier AABB = ", _visibility_notifier.aabb)
 
 	_visibility_notifier.screen_entered.connect(_on_became_visible)
 	_visibility_notifier.screen_exited.connect(_on_became_hidden)
@@ -210,25 +210,25 @@ func _setup_visibility_notifier() -> void:
 ## Called deferred after visibility notifier is set up to check initial visibility
 func _check_initial_visibility() -> void:
 	if _is_exiting_tree:
-		print("[GRASS DEBUG] Chunk ", chunk_coords, " _check_initial_visibility() - SKIPPED (exiting tree)")
+		# print("[GRASS DEBUG] Chunk ", chunk_coords, " _check_initial_visibility() - SKIPPED (exiting tree)")
 		return
 	var on_screen := _visibility_notifier.is_on_screen() if _visibility_notifier else false
-	print("[GRASS DEBUG] Chunk ", chunk_coords, " _check_initial_visibility() is_on_screen=", on_screen)
+	# print("[GRASS DEBUG] Chunk ", chunk_coords, " _check_initial_visibility() is_on_screen=", on_screen)
 	if _visibility_notifier and on_screen:
 		_on_became_visible()
 
 
 func _on_became_visible() -> void:
-	print("[GRASS DEBUG] Chunk ", chunk_coords, " _on_became_visible() called")
+	# print("[GRASS DEBUG] Chunk ", chunk_coords, " _on_became_visible() called")
 	if not grass_planter:
-		print("[GRASS DEBUG] Chunk ", chunk_coords, " - NO grass_planter!")
+		# print("[GRASS DEBUG] Chunk ", chunk_coords, " - NO grass_planter!")
 		return
 	# Start progressive grass if not already generated
 	var has_grass := grass_planter.has_grass()
 	var is_loading := grass_planter._is_loading_progressively
-	print("[GRASS DEBUG] Chunk ", chunk_coords, " has_grass=", has_grass, " is_loading=", is_loading)
+	# print("[GRASS DEBUG] Chunk ", chunk_coords, " has_grass=", has_grass, " is_loading=", is_loading)
 	if not has_grass and not is_loading:
-		print("[GRASS DEBUG] Chunk ", chunk_coords, " - STARTING progressive regeneration")
+		# print("[GRASS DEBUG] Chunk ", chunk_coords, " - STARTING progressive regeneration")
 		grass_planter.start_progressive_regeneration()
 
 
@@ -241,6 +241,16 @@ func _on_became_hidden() -> void:
 func _exit_tree() -> void:
 	# Mark as exiting to skip deferred callbacks
 	_is_exiting_tree = true
+
+	# IN EDITOR: Reset collision node owners to prevent "Node not found" errors on scene switch
+	# When nodes have owner set to scene_root and scene switches, dangling references remain
+	if Engine.is_editor_hint():
+		for child in get_children():
+			if child is StaticBody3D:
+				child.owner = null
+				for shape_child in child.get_children():
+					if shape_child is CollisionShape3D:
+						shape_child.owner = null
 
 	# AT RUNTIME: Hide grass immediately (fast visual cleanup)
 	if not Engine.is_editor_hint():
@@ -255,18 +265,22 @@ func _exit_tree() -> void:
 func _notification(what: int) -> void:
 	# HARD CLEANUP (PREDELETE - final resource deallocation)
 	if what == NOTIFICATION_PREDELETE:
+		# Reset collision node owners to prevent "Node not found" errors
+		# This catches any remaining dangling references not cleared in _exit_tree()
+		for child in get_children():
+			if child is StaticBody3D:
+				child.owner = null
+				for shape_child in child.get_children():
+					if shape_child is CollisionShape3D:
+						shape_child.owner = null
+						if not Engine.is_editor_hint():
+							shape_child.shape = null
+				break
+
 		if not Engine.is_editor_hint():
 			# Free resources in dependency order: grass → collision → mesh
 			if grass_planter and grass_planter.multimesh:
 				grass_planter.multimesh = null
-
-			for child in get_children():
-				if child is StaticBody3D:
-					for shape_child in child.get_children():
-						if shape_child is CollisionShape3D:
-							shape_child.shape = null
-					break
-
 			mesh = null
 		return
 
@@ -356,22 +370,19 @@ func regenerate_mesh():
 	
 	var start_time: int = Time.get_ticks_msec()
 	
-	if not find_child("GrassPlanter"):
-		grass_planter = get_node_or_null("GrassPlanter")
-		if not grass_planter:
-			grass_planter = GrassPlanter.new()
-			if not color_map_0 or not color_map_1:
-				generate_color_maps()
-			if not grass_mask_map:
-				generate_grass_mask_map()
-			new_chunk = true
+	grass_planter = find_child("GrassPlanter")
+	if not grass_planter:
+		grass_planter = GrassPlanter.new()
+		if not color_map_0 or not color_map_1:
+			generate_color_maps()
+		if not grass_mask_map:
+			generate_grass_mask_map()
+		new_chunk = true
 		grass_planter.name = "GrassPlanter"
 		add_child(grass_planter)
-		grass_planter._chunk = self
-		grass_planter.setup(self)
 		grass_planter.owner = EditorInterface.get_edited_scene_root()
-	else:
-		grass_planter._chunk = self
+	grass_planter._chunk = self
+	grass_planter.setup(self)
 	
 	generate_terrain_cells()
 	

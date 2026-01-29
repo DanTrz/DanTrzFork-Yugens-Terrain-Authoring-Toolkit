@@ -490,6 +490,13 @@ func clear_texture_image_cache() -> void:
 	_texture_image_cache.clear()
 
 
+## Pre-cache all texture images (call before threaded grass generation)
+## This ensures thread-safe access to texture images
+func ensure_texture_images_cached() -> void:
+	for i in range(1, 16):  # Texture IDs 1-15
+		get_cached_texture_image(i)
+
+
 ## Periodically unload grass from distant chunks to save memory (runtime only)
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
@@ -760,7 +767,8 @@ func force_batch_update(skip_grass_regeneration: bool = false) -> void:
 	# (initialize_terrain() already handles grass regeneration during load)
 	if not skip_grass_regeneration:
 		for chunk: MarchingSquaresTerrainChunk in chunks.values():
-			chunk.grass_planter.regenerate_all_cells()
+			if chunk.grass_planter and not chunk.grass_planter.has_grass():
+				chunk.grass_planter.regenerate_all_cells()
 
 
 # Syncs and saves current UI texture values to the given preset resource

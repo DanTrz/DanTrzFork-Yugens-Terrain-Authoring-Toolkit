@@ -36,7 +36,10 @@ static func get_data_directory(terrain: MarchingSquaresTerrain) -> String:
 
 	# If empty, generate default path based on scene location with unique UID
 	if dir_path.is_empty():
-		var scene_root := terrain.get_tree().edited_scene_root if Engine.is_editor_hint() else terrain.get_tree().current_scene
+		var tree := terrain.get_tree()
+		if not tree:
+			return ""  # Node not in scene tree yet
+		var scene_root := tree.edited_scene_root if Engine.is_editor_hint() else tree.current_scene
 		if not scene_root or scene_root.scene_file_path.is_empty():
 			return ""
 
@@ -432,9 +435,13 @@ static func get_collision_shape(chunk) -> ConcavePolygonShape3D:
 
 ## Apply collision shape from external data to a chunk
 static func apply_collision_shape(chunk, shape: ConcavePolygonShape3D) -> void:
-	# Remove existing collision bodies
+	# Remove existing collision bodies - reset owner first to prevent dangling references
 	for child in chunk.get_children():
 		if child is StaticBody3D:
+			child.owner = null
+			for shape_child in child.get_children():
+				if shape_child is CollisionShape3D:
+					shape_child.owner = null
 			child.free()
 
 	if not shape:
