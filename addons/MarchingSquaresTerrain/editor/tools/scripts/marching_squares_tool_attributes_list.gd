@@ -80,6 +80,27 @@ var texture_name : Dictionary = {
 	"default": "New name here...",
 }
 
+var texture_preset : Dictionary = {
+	"name": "texture_preset",
+	"type": "preset",
+	"label": "Texture Preset",
+	"default": null,
+}
+
+var quick_paint_selection : Dictionary = {
+	"name": "quick_paint_selection",
+	"type": "quick_paint",
+	"label": "Quick Paint",
+	"default": null,
+}
+
+var paint_walls : Dictionary = {
+	"name": "paint_walls",
+	"type": "checkbox",
+	"label": "Paint Walls",
+	"default": false,
+}
+
 var chunk_management : Dictionary = {
 	"name": "chunk_management",
 	"type": "chunk",
@@ -92,7 +113,7 @@ var terrain_settings : Dictionary = {
 	"label": "Terrain Settings",
 }
 
-""" 
+"""
 # Example Attribute Entries
 	"name": "",
 	"type": "",

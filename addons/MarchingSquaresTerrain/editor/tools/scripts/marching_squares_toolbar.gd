@@ -45,7 +45,7 @@ func _add_tools() -> void:
 		button.set_flat(true)
 		button.set_toggle_mode(true)
 		var scale = EditorInterface.get_editor_scale() # Lets the icons work on retina displays
-		button.custom_minimum_size = Vector2(25, 25) * scale
+		button.custom_minimum_size = Vector2(30, 30) * scale
 		button.expand_icon = true
 		button.set_button_group(tool_button_group)
 		

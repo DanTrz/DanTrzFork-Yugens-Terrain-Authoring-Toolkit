@@ -1,6 +1,7 @@
 extends Resource
 class_name MarchingSquaresToolAttributeSettings
 
+
 # General brush attributes
 @export var brush_type : bool = false
 @export var size : bool = false
@@ -14,6 +15,11 @@ class_name MarchingSquaresToolAttributeSettings
 @export var mask_mode : bool = false
 @export var material : bool = false
 @export var texture_name : bool = false
+
+# Vertex painting-related special attributes
+@export var texture_preset : bool = false
+@export var quick_paint_selection : bool = false
+@export var paint_walls : bool = false
 
 # Non-brush attributes
 @export var chunk_management : bool = false

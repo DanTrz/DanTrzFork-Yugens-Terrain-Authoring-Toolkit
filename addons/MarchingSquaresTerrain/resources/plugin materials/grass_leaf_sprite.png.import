@@ -3,8 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cxvnfgy865wsk"
-path.s3tc="res://.godot/imported/grass_leaf_sprite.png-da42aaebca2aacf3f07cf4ecb224aec4.s3tc.ctex"
-path.etc2="res://.godot/imported/grass_leaf_sprite.png-da42aaebca2aacf3f07cf4ecb224aec4.etc2.ctex"
+path.s3tc="res://.godot/imported/grass_leaf_sprite.png-be0cca7d9ef4813e24c3c8b3e2ab31cb.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -12,8 +11,8 @@ metadata={
 
 [deps]
 
-source_file="res://addons/MarchingSquaresTerrain/resources/materials/grass_leaf_sprite.png"
-dest_files=["res://.godot/imported/grass_leaf_sprite.png-da42aaebca2aacf3f07cf4ecb224aec4.s3tc.ctex", "res://.godot/imported/grass_leaf_sprite.png-da42aaebca2aacf3f07cf4ecb224aec4.etc2.ctex"]
+source_file="res://addons/MarchingSquaresTerrain/resources/plugin materials/grass_leaf_sprite.png"
+dest_files=["res://.godot/imported/grass_leaf_sprite.png-be0cca7d9ef4813e24c3c8b3e2ab31cb.s3tc.ctex"]
 
 [params]
 

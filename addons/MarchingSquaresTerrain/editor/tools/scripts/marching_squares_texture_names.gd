@@ -2,7 +2,7 @@ extends Resource
 class_name MarchingSquaresTextureNames
 
 
-# Vertex painting texture display names
+# Vertex painting texture display names (unified for both floor and wall painting)
 @export var texture_names : Array[String] = [
 	"Base Grass", "Texture 2 (g)", "Texture 3 (g)", "Texture 4 (g)",
 	"Texture 5 (g)", "Texture 6 (g)", "Texture 7", "Texture 8",

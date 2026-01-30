@@ -1,4 +1,4 @@
-[gd_resource type="PlaneMesh" load_steps=2 format=3 uid="uid://ch6cb07rh0m3l"]
+[gd_resource type="PlaneMesh" format=3 uid="uid://ch6cb07rh0m3l"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mdhje"]
 render_priority = 11

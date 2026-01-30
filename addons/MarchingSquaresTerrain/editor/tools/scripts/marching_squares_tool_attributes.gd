@@ -1,10 +1,13 @@
 @tool
-extends HFlowContainer
+extends ScrollContainer
 class_name MarchingSquaresToolAttributes
 
 
 signal setting_changed(setting: String, value: Variant)
 signal terrain_setting_changed(setting: String, value: Variant)
+
+const TEXTURE_PRESETS_PATH : String= "res://addons/MarchingSquaresTerrain/resources/texture presets/"
+const GLOBAL_QUICK_PAINTS_PATH : String = "res://addons/MarchingSquaresTerrain/resources/quick paints/global/"
 
 enum SettingType {
 	CHECKBOX,
@@ -13,23 +16,25 @@ enum SettingType {
 	TEXT,
 	CHUNK,
 	TERRAIN,
+	PRESET,
+	QUICK_PAINT,
 	ERROR,
 }
 
 var terrain_settings_data : Dictionary = {
 	"dimensions": "Vector3i",
 	"cell_size": "Vector2",
-	"wall_threshold": "EditorSpinSlider",
+	"blend_mode": "OptionButton",
 	"noise_hmap": "EditorResourcePicker",
-	"wall_texture": "EditorResourcePicker",
-	"wall_color": "ColorPickerButton",
+	"default_wall_texture": "OptionButton",
 	# Grass settings
 	"animation_fps": "SpinBox",
 	"grass_subdivisions": "SpinBox",
 	"grass_size": "Vector2",
+	"use_ridge_texture": "CheckBox",
 	"ridge_threshold": "EditorSpinSlider",
 	"ledge_threshold": "EditorSpinSlider",
-	"use_ridge_texture": "CheckBox",
+	"extra_collision_layer": "OptionButton",
 }
 
 var plugin : MarchingSquaresTerrainPlugin
@@ -39,13 +44,21 @@ var settings : Dictionary = {}
 var last_setting_type : SettingType = SettingType.ERROR
 var selected_chunk : MarchingSquaresTerrainChunk
 
+var hbox_container
+
+
 func _ready() -> void:
 	set_custom_minimum_size(Vector2(0, 35))
 	add_theme_constant_override("separation", 5)
+	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 
 
 func show_tool_attributes(tool_index: int) -> void:
-	set_custom_minimum_size(Vector2(0, 35))
+	hbox_container = HBoxContainer.new()
+	hbox_container.add_theme_constant_override("separation", 5)
+	hbox_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox_container.size_flags_vertical = Control.SIZE_FILL
 	
 	if not visible:
 		return
@@ -66,6 +79,8 @@ func show_tool_attributes(tool_index: int) -> void:
 		"text": SettingType.TEXT,
 		"chunk": SettingType.CHUNK,
 		"terrain": SettingType.TERRAIN,
+		"preset": SettingType.PRESET,
+		"quick_paint": SettingType.QUICK_PAINT,
 	}
 	
 	var new_attributes := []
@@ -89,6 +104,12 @@ func show_tool_attributes(tool_index: int) -> void:
 		new_attributes.append(attribute_list.material)
 	if tool_attributes.texture_name:
 		new_attributes.append(attribute_list.texture_name)
+	if tool_attributes.texture_preset:
+		new_attributes.append(attribute_list.texture_preset)
+	if tool_attributes.quick_paint_selection:
+		new_attributes.append(attribute_list.quick_paint_selection)
+	if tool_attributes.paint_walls:
+		new_attributes.append(attribute_list.paint_walls)
 	if tool_attributes.chunk_management:
 		new_attributes.append(attribute_list.chunk_management)
 	if tool_attributes.terrain_settings:
@@ -100,6 +121,7 @@ func show_tool_attributes(tool_index: int) -> void:
 			setting_dict["type"] = type_map.get(setting_dict["type"], SettingType.ERROR)
 		add_setting(setting_dict)
 	
+	add_child(hbox_container)
 	last_setting_type = SettingType.ERROR # Reset the setting type for correct VSeparators
 
 
@@ -112,7 +134,7 @@ func add_setting(p_params: Dictionary) -> void:
 		if last_setting_type == SettingType.SLIDER and setting_type == SettingType.SLIDER:
 			pass
 		elif last_setting_type != setting_type:
-			add_child(VSeparator.new())
+			hbox_container.add_child(VSeparator.new())
 	
 	var add_label := true
 	if setting_type == SettingType.CHUNK or setting_type == SettingType.TERRAIN:
@@ -126,7 +148,7 @@ func add_setting(p_params: Dictionary) -> void:
 		var c_cont := CenterContainer.new()
 		c_cont.set_custom_minimum_size(Vector2(50, 35))
 		c_cont.add_child(label, true)
-		add_child(c_cont, true)
+		hbox_container.add_child(c_cont, true)
 	
 	var cont
 	var saved_setting_value = _get_setting_value(setting_name)
@@ -143,7 +165,7 @@ func add_setting(p_params: Dictionary) -> void:
 			cont = CenterContainer.new()
 			cont.set_custom_minimum_size(Vector2(35, 35))
 			cont.add_child(checkbox, true)
-			add_child(cont, true)
+			hbox_container.add_child(cont, true)
 		SettingType.SLIDER:
 			var range_data = p_params.get("range", Vector3(1.0, 50.0, 0.5))
 			var range_min = range_data.x
@@ -181,7 +203,7 @@ func add_setting(p_params: Dictionary) -> void:
 				cont.add_theme_constant_override("margin_right", 10)
 				cont.add_theme_constant_override("margin_left", -3)
 				cont.add_child(hslider, true)
-			add_child(cont, true)
+			hbox_container.add_child(cont, true)
 		SettingType.OPTION:
 			var options : Array = p_params.get("options", [])
 			var option_button := OptionButton.new()
@@ -199,7 +221,7 @@ func add_setting(p_params: Dictionary) -> void:
 			cont = CenterContainer.new()
 			cont.set_custom_minimum_size(Vector2(65, 35))
 			cont.add_child(option_button, true)
-			add_child(cont, true)
+			hbox_container.add_child(cont, true)
 		SettingType.TEXT:
 			var line_edit := LineEdit.new()
 			line_edit.set_flat(true)
@@ -212,7 +234,104 @@ func add_setting(p_params: Dictionary) -> void:
 			cont = CenterContainer.new()
 			cont.set_custom_minimum_size(Vector2(35, 35))
 			cont.add_child(line_edit, true)
-			add_child(cont, true)
+			hbox_container.add_child(cont, true)
+		SettingType.PRESET:
+			var preset_button := OptionButton.new()
+			var dir : DirAccess
+			var file_name : String
+			preset_button.add_item("None") # First option is no preset
+			preset_button.set_item_metadata(0, null)
+			if setting_name == "texture_preset":
+				dir = DirAccess.open(TEXTURE_PRESETS_PATH)
+				if dir:
+					dir.list_dir_begin()
+					file_name = dir.get_next()
+					while file_name != "":
+						if file_name.ends_with(".tres") or file_name.ends_with(".res"):
+							var texture_preset := load(TEXTURE_PRESETS_PATH + file_name) as MarchingSquaresTexturePreset
+							if texture_preset:
+								preset_button.add_item(texture_preset.preset_name)
+								preset_button.set_item_metadata(preset_button.item_count - 1, texture_preset)
+						file_name = dir.get_next()
+					dir.list_dir_end()
+				
+				preset_button.set_flat(true)
+				preset_button.item_selected.connect(func(index):
+					var selected_texture_preset = preset_button.get_item_metadata(index)
+					_on_setting_changed(setting_name, selected_texture_preset)
+				)
+				preset_button.set_custom_minimum_size(Vector2(100, 35))
+				
+				# Sync dropdown selection with current plugin.current_texture_preset
+				var terrain := MarchingSquaresTerrainPlugin.instance.current_terrain_node
+				var current_texture_preset = terrain.current_texture_preset if terrain else null
+				if current_texture_preset == null:
+					preset_button.select(0)  # Select "None"
+				else:
+					# Find matching preset in dropdown
+					for i in range(preset_button.item_count):
+						if preset_button.get_item_metadata(i) == current_texture_preset:
+							preset_button.select(i)
+							break
+				
+				cont = CenterContainer.new()
+				cont.set_custom_minimum_size(Vector2(100, 35))
+				cont.add_child(preset_button, true)
+				hbox_container.add_child(cont, true)
+			else: # Can be used for e.g. terrain settings presets in the future
+				pass 
+		SettingType.QUICK_PAINT:
+			var quick_paint_button := OptionButton.new()
+			quick_paint_button.add_item("None")  # First option is no paint. #TODO Doesn't seem to work right now and needs to be fixed later.
+			quick_paint_button.set_item_metadata(0, null)
+			
+			# 1. Load GLOBAL quick paints from folder (always available)
+			var dir := DirAccess.open(GLOBAL_QUICK_PAINTS_PATH)
+			if dir:
+				dir.list_dir_begin()
+				var file_name := dir.get_next()
+				while file_name != "":
+					if file_name.ends_with(".tres") or file_name.ends_with(".res"):
+						var quick_paint := load(GLOBAL_QUICK_PAINTS_PATH + file_name) as MarchingSquaresQuickPaint
+						if quick_paint:
+							quick_paint_button.add_item(quick_paint.paint_name)
+							quick_paint_button.set_item_metadata(quick_paint_button.item_count - 1, quick_paint)
+					file_name = dir.get_next()
+				dir.list_dir_end()
+			
+			# 2. Load PRESET-SPECIFIC quick paints (if preset is selected and has any)
+			var terrain := MarchingSquaresTerrainPlugin.instance.current_terrain_node
+			if terrain and terrain.current_texture_preset:
+				var preset := terrain.current_texture_preset
+				if preset.quick_paints.size() > 0:
+					quick_paint_button.add_separator()  # Visual separator
+					for quick_paint in preset.quick_paints:
+						if quick_paint:
+							quick_paint_button.add_item(quick_paint.paint_name)
+							quick_paint_button.set_item_metadata(quick_paint_button.item_count - 1, quick_paint)
+			
+			quick_paint_button.set_flat(true)
+			quick_paint_button.item_selected.connect(func(index):
+				var selected_quick_paint = quick_paint_button.get_item_metadata(index)
+				_on_setting_changed(setting_name, selected_quick_paint)
+			)
+			quick_paint_button.set_custom_minimum_size(Vector2(100, 35))
+			
+			# Sync dropdown selection with current plugin.current_quick_paint
+			var current_quick_paint = _get_setting_value(setting_name)
+			if current_quick_paint == null:
+				quick_paint_button.select(0)  # Select "None"
+			else:
+				# Find matching quick paint in dropdown
+				for i in range(quick_paint_button.item_count):
+					if quick_paint_button.get_item_metadata(i) == current_quick_paint:
+						quick_paint_button.select(i)
+						break
+			
+			cont = CenterContainer.new()
+			cont.set_custom_minimum_size(Vector2(100, 35))
+			cont.add_child(quick_paint_button, true)
+			hbox_container.add_child(cont, true)
 		SettingType.CHUNK:
 			if plugin.current_terrain_node.get_child_count() == 0:
 				return
@@ -239,15 +358,15 @@ func add_setting(p_params: Dictionary) -> void:
 			cont = CenterContainer.new()
 			cont.set_custom_minimum_size(Vector2(65, 35))
 			cont.add_child(chunk_button, true)
-			add_child(cont, true)
+			hbox_container.add_child(cont, true)
 			
 			var v_sep := VSeparator.new()
-			add_child(v_sep, true)
+			hbox_container.add_child(v_sep, true)
 			
 			cont = CenterContainer.new()
 			cont.set_custom_minimum_size(Vector2(65, 35))
 			cont.add_child(option_button, true)
-			add_child(cont, true)
+			hbox_container.add_child(cont, true)
 		SettingType.TERRAIN:
 			var vbox := VBoxContainer.new()
 			for setting in terrain_settings_data:
@@ -347,7 +466,7 @@ func add_setting(p_params: Dictionary) -> void:
 					"CheckBox":
 						var checkbox := CheckBox.new()
 						checkbox.set_flat(true)
-						checkbox.button_pressed = plugin.current_terrain_node.use_ridge_texture
+						checkbox.button_pressed = plugin.current_terrain_node.get(setting)
 						checkbox.toggled.connect(func(pressed): _on_terrain_setting_changed(setting, pressed))
 						checkbox.set_custom_minimum_size(Vector2(25, 25))
 						
@@ -356,12 +475,39 @@ func add_setting(p_params: Dictionary) -> void:
 						ts_cont.add_child(checkbox, true)
 						hbox.add_child(ts_cont, true)
 						vbox.add_child(hbox, true)
+					"OptionButton":
+						var option_button := OptionButton.new()
+						option_button.set_flat(true)
+						if setting == "default_wall_texture":
+							# Populate with texture names from the shared texture names resource
+							for tex_name in attribute_list.vp_tex_names.texture_names:
+								option_button.add_item(tex_name)
+						elif setting == "blend_mode":
+							option_button.add_item("Smoothed Triangles")
+							option_button.add_item("Hard Squares")
+							option_button.add_item("Hard Triangles")
+						elif setting == "extra_collision_layer":
+							for i in range(24):
+								option_button.add_item(str(i+9))
+						# Set current selection from terrain node
+						if setting == "extra_collision_layer":
+							option_button.selected = plugin.current_terrain_node.get(setting) - 9
+						else:
+							option_button.selected = plugin.current_terrain_node.get(setting)
+						option_button.item_selected.connect(func(index): _on_terrain_setting_changed(setting, index))
+						option_button.set_custom_minimum_size(Vector2(100, 35))
+						
+						ts_cont = CenterContainer.new()
+						ts_cont.set_custom_minimum_size(Vector2(100, 35))
+						ts_cont.add_child(option_button, true)
+						hbox.add_child(ts_cont, true)
+						vbox.add_child(hbox, true)
 				if vbox.get_child_count() % 3 == 0:
-					add_child(vbox)
-					add_child(VSeparator.new())
+					hbox_container.add_child(vbox)
+					hbox_container.add_child(VSeparator.new())
 					vbox = VBoxContainer.new()
 			if vbox.get_child_count() > 0:
-				add_child(vbox)
+				hbox_container.add_child(vbox)
 		SettingType.ERROR: # Fallback
 			printerr("ERROR: [MarchingSquaresToolAttributes] couldn't load tool attributes setting")
 	
@@ -390,6 +536,12 @@ func _get_setting_value(p_setting_name: String) -> Variant:
 			return plugin.vertex_color_idx
 		"texture_name":
 			pass
+		"texture_preset":
+			return plugin.current_texture_preset
+		"quick_paint_selection":
+			return plugin.current_quick_paint
+		"paint_walls":
+			return plugin.paint_walls_mode
 		"chunk_management":
 			pass
 		"terrain_settings":

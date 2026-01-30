@@ -1,4 +1,4 @@
-[gd_resource type="ShaderMaterial" load_steps=2 format=3 uid="uid://daofaifmtbyak"]
+[gd_resource type="ShaderMaterial" format=3 uid="uid://daofaifmtbyak"]
 
 [ext_resource type="Shader" uid="uid://05bc22hmv5vn" path="res://addons/MarchingSquaresTerrain/resources/shaders/square_brush_radius_visual.gdshader" id="1_x5cba"]
 

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="MarchingSquaresTool" load_steps=5 format=3 uid="uid://ups2hlmespdm"]
+[gd_resource type="Resource" script_class="MarchingSquaresTool" format=3 uid="uid://ups2hlmespdm"]
 
 [ext_resource type="Script" uid="uid://b6jopat61dbd3" path="res://addons/MarchingSquaresTerrain/editor/tools/scripts/marching_squares_tool_attribute_settings.gd" id="1_ewlj6"]
 [ext_resource type="Texture2D" uid="uid://w8btt8he72k" path="res://addons/MarchingSquaresTerrain/editor/icons/chunk_manager_tool.svg" id="1_ir1w2"]
@@ -13,6 +13,16 @@ metadata/_custom_type_script = "uid://b6jopat61dbd3"
 script = ExtResource("1_j1t8c")
 icon = ExtResource("1_ir1w2")
 label = "Chunk Manager"
-tooltip = "Used to create, delete and change chunk settings."
+tooltip = "Chunk Management Tool
+
+Used to create, delete and change chunk settings.
+
+[INFO]
+Chunk cell merge modes:
+• CUBIC: The most blocky of all the modes. Has minimal smoothing between cells.
+• POLYHEDRON: Blocky terrain with slight cell smoothing (DEFAULT CHUNK STATE).
+• ROUNDED_POLYHEDRON: A good 50/50 mix between having smooth and blocky terrain.
+• SEMI_ROUND: Mostly smooth terrain with the occasional blocky cells.
+• SPHERICAL: All the terrain will become smooth. This mode looks the most unnatural for the algorithm."
 attributes = SubResource("Resource_w6p77")
 metadata/_custom_type_script = "uid://brkjbcthwswel"

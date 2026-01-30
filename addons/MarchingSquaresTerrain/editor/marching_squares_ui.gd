@@ -7,8 +7,6 @@ const TOOLBAR : Script = preload("res://addons/MarchingSquaresTerrain/editor/too
 const TOOL_ATTRIBUTES : Script = preload("res://addons/MarchingSquaresTerrain/editor/tools/scripts/marching_squares_tool_attributes.gd")
 const TEXTURE_SETTINGS : Script = preload("res://addons/MarchingSquaresTerrain/editor/tools/scripts/marching_squares_texture_settings.gd")
 
-var vp_texture_names = preload("res://addons/MarchingSquaresTerrain/resources/texture_names.tres")
-
 var plugin : MarchingSquaresTerrainPlugin
 var toolbar : TOOLBAR
 var tool_attributes : TOOL_ATTRIBUTES
@@ -82,18 +80,21 @@ func set_visible(is_visible: bool) -> void:
 
 func _on_tool_changed(tool_index: int) -> void:
 	active_tool = tool_index
+	
 	if tool_index == 5: # Vertex Painting
 		tool_attributes.attribute_list = MarchingSquaresToolAttributesList.new()
 		texture_settings.show()
 		texture_settings.add_texture_settings()
-		
 	else:
 		texture_settings.hide()
+	
 	if tool_index == 3: # Bridge tool
 		plugin.falloff = false
 		plugin.BRUSH_RADIUS_MATERIAL.set_shader_parameter("falloff_visible", false)
+	
 	plugin.active_tool = tool_index
 	plugin.mode = tool_index
+	plugin.vertex_color_idx = 0 # Set to the first material on start # Working around a UI sync bug. #TODO: This is temp workaround - Possible refactor.
 	tool_attributes.show_tool_attributes(active_tool)
 
 
@@ -117,7 +118,6 @@ func _on_setting_changed(p_setting_name: String, p_value: Variant) -> void:
 		"falloff":
 			if p_value is bool:
 				plugin.falloff = p_value
-				# Update the brush radius material
 				if plugin.BRUSH_RADIUS_MATERIAL:
 					plugin.BRUSH_RADIUS_MATERIAL.set_shader_parameter("falloff_visible", p_value)
 		"strength":
@@ -136,9 +136,25 @@ func _on_setting_changed(p_setting_name: String, p_value: Variant) -> void:
 			if p_value is String:
 				if plugin.vertex_color_idx == 0 or plugin.vertex_color_idx == 15:
 					return
-				var new_names = vp_texture_names.texture_names.duplicate()
-				new_names[plugin.vertex_color_idx] = p_value
-				vp_texture_names.texture_names = new_names
+				var new_preset_names = plugin.current_texture_preset.new_tex_names.texture_names.duplicate()
+				new_preset_names[plugin.vertex_color_idx] = p_value
+				plugin.current_texture_preset.new_tex_names.texture_names = new_preset_names
+			tool_attributes.show_tool_attributes(active_tool)
+		"texture_preset":
+			if p_value is MarchingSquaresTexturePreset:
+				plugin.current_texture_preset = p_value
+			else:
+				plugin.current_texture_preset = null
+			# Rebuild tool attributes to refresh Quick Paint dropdown
+			tool_attributes.show_tool_attributes(active_tool)
+		"quick_paint_selection":
+			if p_value is MarchingSquaresQuickPaint:
+				plugin.current_quick_paint = p_value
+			else:
+				plugin.current_quick_paint = null
+		"paint_walls":
+			if p_value is bool:
+				plugin.paint_walls_mode = p_value
 
 
 func _on_terrain_setting_changed(p_setting_name: String, p_value: Variant) -> void:
@@ -150,6 +166,9 @@ func _on_terrain_setting_changed(p_setting_name: String, p_value: Variant) -> vo
 		"cell_size":
 			if p_value is Vector2:
 				terrain.cell_size = p_value
+		"blend_mode":
+			if p_value is int:
+				terrain.blend_mode = p_value
 		"wall_threshold":
 			if p_value is float:
 				terrain.wall_threshold = p_value
@@ -180,10 +199,21 @@ func _on_terrain_setting_changed(p_setting_name: String, p_value: Variant) -> vo
 		"use_ridge_texture":
 			if p_value is bool:
 				terrain.use_ridge_texture = p_value
+		"default_wall_texture":
+			if p_value is int:
+				terrain.default_wall_texture = p_value
+		"extra_collision_layer":
+			if p_value is int:
+				# +1 because collision layers don't start from 0 like indexed items
+				# +8 because the selectable collision layers range from 9 to 32
+				terrain.extra_collision_layer = p_value + 9
 
 
 func _on_texture_setting_changed(p_setting_name: String, p_value: Variant) -> void:
 	var terrain := plugin.current_terrain_node
+	if not terrain:
+		printerr("ERROR: [MarchingSquaresUI] No current terrain node to apply texture settings to")
+		return
 	match p_setting_name:
 		"ground_texture":
 			if p_value is Texture2D or p_value == null:
@@ -281,3 +311,51 @@ func _on_texture_setting_changed(p_setting_name: String, p_value: Variant) -> vo
 		"texture_15":
 			if p_value is Texture2D or p_value == null:
 				terrain.texture_15 = p_value
+		# Per-texture UV scale handlers
+		"texture_scale_1":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_1 = float(p_value)
+		"texture_scale_2":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_2 = float(p_value)
+		"texture_scale_3":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_3 = float(p_value)
+		"texture_scale_4":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_4 = float(p_value)
+		"texture_scale_5":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_5 = float(p_value)
+		"texture_scale_6":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_6 = float(p_value)
+		"texture_scale_7":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_7 = float(p_value)
+		"texture_scale_8":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_8 = float(p_value)
+		"texture_scale_9":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_9 = float(p_value)
+		"texture_scale_10":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_10 = float(p_value)
+		"texture_scale_11":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_11 = float(p_value)
+		"texture_scale_12":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_12 = float(p_value)
+		"texture_scale_13":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_13 = float(p_value)
+		"texture_scale_14":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_14 = float(p_value)
+		"texture_scale_15":
+			if p_value is float or p_value is int:
+				terrain.texture_scale_15 = float(p_value)
+	
+	terrain.save_to_preset()
