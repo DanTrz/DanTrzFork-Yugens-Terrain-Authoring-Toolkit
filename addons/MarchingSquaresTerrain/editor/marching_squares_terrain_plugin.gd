@@ -309,7 +309,11 @@ func handle_mouse(camera: Camera3D, event: InputEvent) -> int:
 			else:
 				# FALLBACK: If we didn't hit a chunk, project onto a virtual plane at draw_height
 				# This allows painting onto chunks while the mouse is in "negative space"
-				var virtual_plane = Plane(Vector3.UP, Vector3(0, draw_height, 0))
+				var fallback_height = 0.0
+				if is_drawing or is_setting or not current_draw_pattern.is_empty():
+					fallback_height = draw_height
+				
+				var virtual_plane = Plane(Vector3.UP, Vector3(0, fallback_height, 0))
 				var plane_pos = virtual_plane.intersects_ray(ray_origin, ray_dir)
 				if plane_pos:
 					draw_position = terrain.to_local(plane_pos)
