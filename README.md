@@ -11,7 +11,7 @@ This project is an effort to create a simple to use and powerfull terrain author
 * Paint a mask map that determines whether selected cells should draw `MultiMeshInstance3d` grass instances
 * Get debug information for selected cells
 * Change the internal marching squares algorithm vertex merge threshold value resulting in smoother or blockier terrain
-* Change global terrain settings like wall texture, wall color, grass animation fps and more...
+* Change global terrain settings like the default wall texture, texture blend mode, grass animation fps and more...
 
 For more in-depth documentation, please refer to the _documentation_ folder in the addon.
 
