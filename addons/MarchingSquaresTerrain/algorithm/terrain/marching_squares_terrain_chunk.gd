@@ -176,7 +176,7 @@ func regenerate_mesh():
 		grass_planter._chunk = self
 		grass_planter.setup(self)
 		if Engine.is_editor_hint():
-			grass_planter.owner = EditorInterface.get_edited_scene_root()
+			grass_planter.owner = Engine.get_singleton("EditorInterface").get_edited_scene_root()
 		else:
 			grass_planter.owner = get_tree().root
 	else:
