@@ -15,7 +15,15 @@ enum StorageMode { RUNTIME, BAKED }
 ## The storage mode for terrain data. 
 ## RUNTIME: Rebuilds mesh/collision from source data on load (Smallest files, higher load time)
 ## BAKED: Saves and loads pre-built mesh/collision assets (Larger files, instant load)
-@export var storage_mode : StorageMode = StorageMode.RUNTIME
+@export var storage_mode : StorageMode = StorageMode.RUNTIME:
+	set(value):
+		if storage_mode != value:
+			storage_mode = value
+			# Mark all chunks dirty to force re-save of data/meshes
+			if chunks:
+				for chunk in chunks.values():
+					chunk.mark_dirty()
+			print_verbose("MST: Storage mode changed. All chunks marked for save.")
 
 ## Unique identifier for this terrain instance (auto-generated on first save)
 ## Prevents path collisions when nodes are recreated with same name
