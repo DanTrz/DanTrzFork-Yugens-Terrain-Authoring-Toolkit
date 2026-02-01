@@ -93,6 +93,9 @@ static func save_all_chunks(terrain: MarchingSquaresTerrain) -> void:
 		printerr("MSTDataHandler: Failed to create data directory: ", dir_path)
 		return
 
+	# Calculate initial size
+	var initial_size : int = MarchingSquaresFileUtils.get_directory_size_recursive(dir_path)
+
 	var saved_count := 0
 	for chunk_coords in terrain.chunks:
 		var chunk : MarchingSquaresTerrainChunk = terrain.chunks[chunk_coords]
@@ -112,7 +115,7 @@ static func save_all_chunks(terrain: MarchingSquaresTerrain) -> void:
 			saved_count += 1
 
 	if saved_count > 0:
-		print_verbose("MSTDataHandler: Saved ", saved_count, " chunk(s) to ", dir_path)
+		_report_storage_size_change(dir_path, initial_size, saved_count)
 
 	# Clean up orphaned chunk directories that no longer exist in scene
 	cleanup_orphaned_chunk_files(terrain)
@@ -547,5 +550,27 @@ static func _delete_directory_recursive(dir_path: String) -> void:
 	dir.list_dir_end()
 
 	DirAccess.remove_absolute(dir_path.trim_suffix("/"))
+
+
+## Report the storage size change after a save operation
+static func _report_storage_size_change(dir_path: String, initial_size: int, saved_count: int) -> void:
+	var final_size : int = MarchingSquaresFileUtils.get_directory_size_recursive(dir_path)
+	var diff : int = final_size - initial_size
+	var pct : float = 0.0
+	
+	if initial_size > 0:
+		pct = (float(diff) / float(initial_size)) * 100.0
+	elif diff > 0:
+		pct = 100.0
+	
+	var sign_str := "+" if diff >= 0 else ""
+	
+	print("MSTDataHandler: Saved ", saved_count, " chunk(s) to ", dir_path)
+	print("MSTDataHandler: Storage Size: %s -> %s (%s%.2f%%)" % [
+		String.humanize_size(initial_size), 
+		String.humanize_size(final_size), 
+		sign_str, 
+		pct
+	])
 
 #endregion
