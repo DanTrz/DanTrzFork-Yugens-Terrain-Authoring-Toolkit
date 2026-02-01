@@ -120,11 +120,21 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 
 	if not mesh and should_regenerate_mesh:
 		regenerate_mesh()
-
-	for child in get_children():
-		if child is StaticBody3D:
-			child.collision_layer = 17
-			child.set_collision_layer_value(terrain_system.extra_collision_layer, true)
+	elif mesh:
+		if not _temp_collision_shapes.is_empty():
+			_recreate_collision_body()
+		else:
+			for child in get_children():
+				if child is StaticBody3D:
+					child.free()
+			create_trimesh_collision()
+			for child in get_children():
+				if child is StaticBody3D:
+					child.collision_layer = 17
+					child.set_collision_layer_value(terrain_system.extra_collision_layer, true)
+					for _child in child.get_children():
+						if _child is CollisionShape3D:
+							_child.set_visible(false)
 
 	grass_planter.setup(self, true)
 	grass_planter.regenerate_all_cells()

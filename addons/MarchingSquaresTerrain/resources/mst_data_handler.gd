@@ -137,10 +137,17 @@ static func save_chunk_resources(terrain: MarchingSquaresTerrain, chunk: Marchin
 	# Export chunk data 
 	var data : MSTChunkData = export_chunk_data(chunk)
 
-	# Clear ephemeral data before saving 
-	data.mesh = null
-	data.grass_multimesh = null
-	data.collision_faces = PackedVector3Array()
+	# Clear ephemeral data based on mode and config
+	var is_baked_mode : bool = terrain.storage_mode == MarchingSquaresTerrain.StorageMode.BAKED
+	
+	if not is_baked_mode:
+		data.mesh = null
+	
+	if not is_baked_mode or not BAKE_GRASS:
+		data.grass_multimesh = null
+		
+	if not is_baked_mode or not BAKE_COLLISION:
+		data.collision_faces = PackedVector3Array()
 
 	var metadata_path := chunk_dir + "metadata.res"
 	var err := ResourceSaver.save(data, metadata_path, ResourceSaver.FLAG_COMPRESS)
@@ -233,6 +240,21 @@ static func export_chunk_data(chunk: MarchingSquaresTerrainChunk) -> MSTChunkDat
 		data.wall_texture_idx[i] = _colors_to_texture_idx(chunk.wall_color_map_0[i], chunk.wall_color_map_1[i])
 		data.grass_mask[i] = 1 if chunk.grass_mask_map[i].r > 0.5 else 0
 
+	# Ephemeral data for BAKED mode
+	data.mesh = chunk.mesh
+	
+	if BAKE_GRASS and chunk.grass_planter:
+		data.grass_multimesh = chunk.grass_planter.multimesh
+	
+	if BAKE_COLLISION:
+		# Find collision shape
+		for child in chunk.get_children():
+			if child is StaticBody3D:
+				for shape_child in child.get_children():
+					if shape_child is CollisionShape3D and shape_child.shape is ConcavePolygonShape3D:
+						data.set_collision_from_shape(shape_child.shape)
+						break
+
 	# Clear legacy arrays 
 	data.color_map_0 = PackedColorArray()
 	data.color_map_1 = PackedColorArray()
@@ -257,6 +279,16 @@ static func import_chunk_data(chunk: MarchingSquaresTerrainChunk, data: MSTChunk
 	chunk.chunk_coords = data.chunk_coords
 	chunk.merge_mode = data.merge_mode
 	chunk.height_map = data.height_map.duplicate(true)
+
+	# Restore baked assets if present
+	if data.mesh:
+		chunk.mesh = data.mesh
+	
+	if data.grass_multimesh:
+		chunk._temp_grass_multimesh = data.grass_multimesh
+	
+	if not data.collision_faces.is_empty():
+		chunk._temp_collision_shapes = [data.get_collision_shape()]
 
 	# Check format version
 	var is_v2 : bool = data.is_v2_format()
