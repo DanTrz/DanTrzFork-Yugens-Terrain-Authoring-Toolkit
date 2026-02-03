@@ -168,7 +168,7 @@ func generate_geometry() -> void:
 		elif is_lower(ay, by) and is_lower(ay, cy) and is_higher(dy, by) and cd:
 			add_c12()
 		
-		# Case 12: Clockwise upwards spiral with A as the highest lowest point and C as the highest. A is lower than B, B is lower than D, D is lower than C, and C is higher than A.
+		# Case 13: Clockwise upwards spiral with A as the highest lowest point and C as the highest. A is lower than B, B is lower than D, D is lower than C, and C is higher than A.
 		elif is_lower(ay, by) and is_lower(by, dy) and is_lower(dy, cy) and is_higher(cy, ay):
 			add_c13()
 		
