@@ -238,7 +238,7 @@ func regenerate_mesh(use_threads: bool = false):
 	
 	var start_time: int = Time.get_ticks_msec()
 	
-	if not find_child("GrassPlanter"):
+	if not get_node_or_null("GrassPlanter"):
 		grass_planter = get_node_or_null("GrassPlanter")
 		if not grass_planter:
 			grass_planter = MarchingSquaresGrassPlanter.new()
@@ -253,7 +253,7 @@ func regenerate_mesh(use_threads: bool = false):
 		grass_planter.setup(self)
 		if Engine.is_editor_hint():
 			grass_planter.owner = Engine.get_singleton("EditorInterface").get_edited_scene_root()
-		else:
+		elif is_inside_tree():
 			grass_planter.owner = get_tree().root
 	else:
 		grass_planter._chunk = self
