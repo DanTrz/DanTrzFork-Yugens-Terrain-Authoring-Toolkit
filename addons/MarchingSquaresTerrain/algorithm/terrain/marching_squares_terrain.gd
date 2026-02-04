@@ -3,12 +3,12 @@ extends Node3D
 class_name MarchingSquaresTerrain
 
 
-enum StorageMode { RUNTIME, BAKED }
+enum StorageMode { BAKED, RUNTIME }
 
 ## The storage mode for terrain data. 
-## RUNTIME: Saves disk space. Generates the mesh when the scene loads (slower load, smaller files).
-## BAKED: Saves load time. Loads a pre-built mesh from disk (instant load, larger files).
-@export var storage_mode : StorageMode = StorageMode.RUNTIME:
+## BAKED: Saves load time. Loads a pre-built visual mesh from disk. collision mesh, grass etc are generated at runtime. (faster load, larger files).
+## RUNTIME: Saves disk space. Generates the visual & collision mesh, grass etc from heightmaps when the scene loads (slower load, smallest files).
+@export var storage_mode : StorageMode = StorageMode.BAKED:
 	set(value):
 		if storage_mode != value:
 			storage_mode = value
@@ -40,7 +40,7 @@ enum StorageMode { RUNTIME, BAKED }
 @export_storage var _storage_initialized : bool = false
 
 ## Tracks the mode used during the last successful save for reporting purposes
-@export_storage var _last_storage_mode : StorageMode = StorageMode.RUNTIME
+@export_storage var _last_storage_mode : StorageMode = StorageMode.BAKED
 
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var dimensions : Vector3i = Vector3i(33, 32, 33): # Total amount of height values in X and Z direction, and total height range
 	set(value):
