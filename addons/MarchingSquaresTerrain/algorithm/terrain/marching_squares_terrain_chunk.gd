@@ -291,7 +291,7 @@ func generate_terrain_cells(use_threads: bool):
 	if not cell_geometry:
 		cell_geometry = {}
 	
-	var cell_threads : Array[Thread] = []
+	var thread_pool := MarchingSquaresThreadPool.new(max(1, OS.get_processor_count()))
 	
 	for z in range(dimensions.z - 1):
 		for x in range(dimensions.x - 1):
@@ -401,17 +401,13 @@ func generate_terrain_cells(use_threads: bool):
 				if grass_planter and grass_planter.terrain_system:
 					grass_planter.generate_grass_on_cell(cell_coords)
 			if use_threads:
-				var thread = Thread.new()
-				if ( thread.start(work_load) != OK ):
-					push_error("Failed to spawn thread!")
-					break
-				cell_threads.append(thread)
+				thread_pool.enqueue(work_load)
 			else:
 				work_load.call()
 	
-	if cell_threads.size() > 0:
-		for t in cell_threads:
-			t.wait_to_finish()
+	if use_threads:
+		thread_pool.start()
+		thread_pool.wait()
 
 #region Color Interpolation Helpers
 
