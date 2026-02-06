@@ -1,10 +1,13 @@
 extends GutTest
+class_name MarchingSquaresGenerationBenchmarkTests
 
+signal test_done(theaded: float, ntheaded: float)
+var disable_non_threaded: bool = false
 
 func test_speed():
 	const HM_WIDTH := 33
 	const HM_LENGTH := 33
-	const NUM_CHUNKS := 9
+	const NUM_CHUNKS := 1
 	
 	var hm : Array[Array] = []
 	for i in range(HM_WIDTH):
@@ -39,14 +42,15 @@ func _test_generate_geometry_benchmark(height_map: Array[Array], N: int):
 	print("Average generation time (threaded) ", threaded_time, " ms")
 	
 	sum = 0
-	for i in range(N):
-		var t0 := Time.get_ticks_msec()
-		chunk.regenerate_all_cells(false)
-		var t1 := Time.get_ticks_msec()
-		sum += (t1-t0)
+	if not disable_non_threaded:
+		for i in range(N):
+			var t0 := Time.get_ticks_msec()
+			chunk.regenerate_all_cells(false)
+			var t1 := Time.get_ticks_msec()
+			sum += (t1-t0)
 	
 	var non_threaded_time := sum / float(N)
 	print("Average generation time (non-threaded) ", non_threaded_time, " ms")
 	
 	assert_lt(threaded_time, non_threaded_time)
-	
+	test_done.emit(threaded_time, non_threaded_time)
