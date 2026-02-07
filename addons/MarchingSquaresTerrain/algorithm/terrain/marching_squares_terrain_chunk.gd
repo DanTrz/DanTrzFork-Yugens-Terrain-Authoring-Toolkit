@@ -117,9 +117,10 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 func initialize_terrain_instant():
 	_prepare_maps_and_collision()
 
-	# Restore baked collision immediately (player can walk on terrain before mesh renders)
 	if mesh:
-		_setup_collision()
+		_setup_collision()            # BAKED: restore real collision from baked shapes
+	else:
+		_create_heightmap_collision()  # RUNTIME: approximate collision from height_map
 
 
 ## Phase 2: Heavy path — mesh gen + grass. Called one chunk per frame during async loading.
@@ -176,6 +177,45 @@ func _setup_collision():
 				for _child in child.get_children():
 					if _child is CollisionShape3D:
 						_child.set_visible(false)
+
+
+## Creates approximate collision from height_map for RUNTIME mode (no baked mesh yet).
+## Provides instant walkable surface. Replaced by real trimesh when commit_mesh_sync() runs.
+func _create_heightmap_collision():
+	var map_w : int = dimensions.x
+	var map_d : int = dimensions.z
+	var data := PackedFloat32Array()
+	data.resize(map_w * map_d)
+	for z in range(map_d):
+		for x in range(map_w):
+			data[z * map_w + x] = height_map[z][x]
+
+	var hm_shape := HeightMapShape3D.new()
+	hm_shape.map_width = map_w
+	hm_shape.map_depth = map_d
+	hm_shape.map_data = data
+
+	var body := StaticBody3D.new()
+	body.collision_layer = 17
+	if terrain_system:
+		body.set_collision_layer_value(terrain_system.extra_collision_layer, true)
+
+	var col := CollisionShape3D.new()
+	col.shape = hm_shape
+	col.visible = false
+	body.add_child(col)
+	add_child(body)
+
+	# HeightMapShape3D covers a 1-unit-per-sample grid centered at origin.
+	# Scale and offset to match our cell_size coordinates.
+	# Shape spans [-map_w/2..+map_w/2] x [-map_d/2..+map_d/2] in local space.
+	# Chunk spans [0..(map_w-1)*cell_size.x] x [0..(map_d-1)*cell_size.y].
+	body.position = Vector3(
+		(map_w - 1) * cell_size.x * 0.5,
+		0.0,
+		(map_d - 1) * cell_size.y * 0.5
+	)
+	body.scale = Vector3(cell_size.x, 1.0, cell_size.y)
 
 
 func _notification(what: int) -> void:
@@ -331,20 +371,63 @@ func generate_terrain_cells(use_threads: bool):
 	# Cache position on main thread — global_position is not thread-safe
 	_cached_chunk_pos = global_position if is_inside_tree() else position
 
-	var thread_pool := MarchingSquaresThreadPool.new(max(1, OS.get_processor_count()))
-	
+	var pool := MarchingSquaresThreadPool.new(max(1, OS.get_processor_count()))
+	_enqueue_cell_jobs(pool, use_threads, true)
+
+	if use_threads:
+		pool.start()
+		pool.wait()
+
+
+## Creates thread pool with cell jobs enqueued and started. Returns pool handle (no wait).
+## Called by MSTAsyncLoader — the loader polls is_done() and calls wait().
+## Grass is NOT included — the loader handles grass incrementally on the main thread.
+func create_cell_generation_pool() -> MarchingSquaresThreadPool:
+	if not cell_geometry:
+		cell_geometry = {}
+
+	_cached_chunk_pos = global_position if is_inside_tree() else position
+
+	var pool := MarchingSquaresThreadPool.new(max(1, OS.get_processor_count()))
+	_enqueue_cell_jobs(pool, true, false)
+	pool.start()
+	return pool
+
+
+## Commits cell_geometry to mesh (RUNTIME) or skips (BAKED). Main thread only.
+## Called by MSTAsyncLoader after cell generation pool finishes.
+func commit_mesh_sync():
+	if not mesh:
+		# RUNTIME: build mesh from cell_geometry
+		st = SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
+		st.set_custom_format(1, SurfaceTool.CUSTOM_RGBA_FLOAT)
+		st.set_custom_format(2, SurfaceTool.CUSTOM_RGBA_FLOAT)
+		_commit_cell_geometry_to_surface_tool()
+		st.generate_normals()
+		st.index()
+		mesh = st.commit()
+		if mesh and terrain_system:
+			mesh.surface_set_material(0, terrain_system.terrain_material)
+		_setup_collision()
+
+
+## Enqueues cell generation jobs into the given thread pool.
+## with_grass: if true, also generates grass per cell (sync path). If false, cells only (async path).
+func _enqueue_cell_jobs(pool: MarchingSquaresThreadPool, use_threads: bool, with_grass: bool):
 	for z in range(dimensions.z - 1):
 		for x in range(dimensions.x - 1):
 			var cell_coords = Vector2i(x, z)
-			
+
 			# If geometry did not change, skip — cached data will be committed later
 			if not needs_update[z][x]:
 				continue
-			
+
 			# Cell is now being updated
 			needs_update[z][x] = false
-			
-			# If geometry did change or none exists yet, 
+
+			# If geometry did change or none exists yet,
 			# Create an entry for this cell (will also override any existing one)
 			cell_geometry[cell_coords] = {
 				"verts": PackedVector3Array(),
@@ -356,19 +439,19 @@ func generate_terrain_cells(use_threads: bool):
 				"mat_blend": PackedColorArray(),
 				"is_floor": [],
 			}
-			
+
 			var cell := MarchingSquaresTerrainCell.new(self, height_map[z][x], height_map[z][x+1], height_map[z+1][x], height_map[z+1][x+1], merge_threshold)
-			
+
 			# Calculate cell height range for boundary detection (height-based color sampling)
 			cell_min_height = min(cell.ay, cell.by, cell.cy, cell.dy)
 			cell_max_height = max(cell.ay, cell.by, cell.cy, cell.dy)
-			
+
 			# Determine if this is a boundary cell (significant height variation)
 			cell_is_boundary = (cell_max_height - cell_min_height) > merge_threshold
-			
+
 			# Calculate the 2 dominant textures for this cell
 			calculate_cell_material_pair(cell_coords, color_map_0, color_map_1)
-			
+
 			if cell_is_boundary:
 				# Identify corners at each height level for height-based color sampling
 				# FLOOR colors - from color_map (used for regular floor vertices)
@@ -398,7 +481,7 @@ func generate_terrain_cells(use_threads: bool):
 					wall_color_map_1[(z + 1) * dimensions.x + x + 1]
 				]
 				var corner_heights = [cell.ay, cell.by, cell.cy, cell.dy]
-				
+
 				# Find corners at min and max height
 				var min_idx = 0
 				var max_idx = 0
@@ -407,7 +490,7 @@ func generate_terrain_cells(use_threads: bool):
 						min_idx = i
 					if corner_heights[i] > corner_heights[max_idx]:
 						max_idx = i
-				
+
 				# Floor boundary colors (from ground color_map)
 				cell_floor_lower_color_0 = floor_corner_colors_0[min_idx]
 				cell_floor_upper_color_0 = floor_corner_colors_0[max_idx]
@@ -418,19 +501,20 @@ func generate_terrain_cells(use_threads: bool):
 				cell_wall_upper_color_0 = wall_corner_colors_0[max_idx]
 				cell_wall_lower_color_1 = wall_corner_colors_1[min_idx]
 				cell_wall_upper_color_1 = wall_corner_colors_1[max_idx]
-				
-			var work_load := func():
-				cell.generate_geometry(cell_coords)
-				if grass_planter and grass_planter.terrain_system:
-					grass_planter.generate_grass_on_cell(cell_coords)
+
+			var work_load : Callable
+			if with_grass:
+				work_load = func():
+					cell.generate_geometry(cell_coords)
+					if grass_planter and grass_planter.terrain_system:
+						grass_planter.generate_grass_on_cell(cell_coords)
+			else:
+				work_load = func():
+					cell.generate_geometry(cell_coords)
 			if use_threads:
-				thread_pool.enqueue(work_load)
+				pool.enqueue(work_load)
 			else:
 				work_load.call()
-	
-	if use_threads:
-		thread_pool.start()
-		thread_pool.wait()
 
 ## Reads all cell_geometry data and feeds it to SurfaceTool (main thread only).
 ## Called after generate_terrain_cells() completes, so all worker threads are done.

@@ -8,6 +8,9 @@ var job_queue: Array = []
 var queue_mutex := Mutex.new()
 var running := false
 
+var _finished_count : int = 0
+var _finish_mutex := Mutex.new()
+
 
 func _init(p_max_threads := 4):
 	max_threads = p_max_threads
@@ -24,6 +27,15 @@ func wait():
 	for t in threads:
 		if t.is_started():
 			t.wait_to_finish()
+
+
+## Non-blocking check: returns true when all worker threads have exited.
+## Call wait() after this returns true to join threads.
+func is_done() -> bool:
+	_finish_mutex.lock()
+	var done := _finished_count >= threads.size()
+	_finish_mutex.unlock()
+	return done
 
 
 func enqueue(job: Callable):
@@ -45,5 +57,7 @@ func _worker_loop():
 		else:
 			var job : Callable = job_queue.pop_front()
 			queue_mutex.unlock()
-			job.call()	
-		
+			job.call()
+	_finish_mutex.lock()
+	_finished_count += 1
+	_finish_mutex.unlock()

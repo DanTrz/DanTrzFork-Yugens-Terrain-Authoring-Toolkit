@@ -462,6 +462,10 @@ var _pending_old_data_dir : String = ""
 # Default is 5 (Texture 6 in 1-indexed UI terms)
 @export_storage var default_wall_texture : int = 5
 
+## How many grass rows to process per frame during async loading.
+## Higher = faster grass appearance, but more FPS impact during loading.
+@export_range(1, 48) var grass_rows_per_frame : int = 24
+
 var void_texture := preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/void_texture.tres")
 var placeholder_wind_texture := preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/wind_noise_texture.tres") # Change to your own texture
 
@@ -472,9 +476,8 @@ var is_batch_updating : bool = false
 
 var chunks : Dictionary = {}
 
-# Phase 2: Async loading — spread chunk generation across frames
-var _chunks_pending_generation : Array[MarchingSquaresTerrainChunk] = []
-var _is_async_loading : bool = false
+# Phase 5: Async loader — drives chunks through phases across frames
+var _async_loader : MSTAsyncLoader = null
 
 
 func _init() -> void:
@@ -526,39 +529,25 @@ func _deferred_enter_tree() -> void:
 		# Auto-migrate embedded data to external storage (editor only)
 		MSTDataHandler.migrate_to_external_storage(self)
 
-	# Phase 2: Async loading — instant pass (maps + collision), defer heavy work
-	_chunks_pending_generation.clear()
+	# Instant pass: maps + collision for every chunk (fast)
 	for chunk in chunks.values():
 		chunk.initialize_terrain_instant()
-		_chunks_pending_generation.append(chunk)
 
-	# Phase 3: Sort queue so chunks closest to camera generate first
-	_sort_chunks_by_camera_distance()
-
-	if not _chunks_pending_generation.is_empty():
-		_is_async_loading = true
-		set_process(true)
+	# Phase 5: Start async loader — drives chunks through phases across frames
+	_async_loader = MSTAsyncLoader.new()
+	_async_loader.chunk_ready.connect(func(coords: Vector2i): chunk_ready.emit(coords))
+	_async_loader.start(chunks.values(), _get_active_camera_position(), grass_rows_per_frame)
+	set_process(true)
 
 
 func _process(_delta: float) -> void:
-	if _chunks_pending_generation.is_empty():
-		if _is_async_loading:
-			_is_async_loading = false
-			set_process(false)
-			terrain_fully_loaded.emit()
+	if not _async_loader:
+		set_process(false)
 		return
-
-	var chunk := _chunks_pending_generation.pop_front()
-	chunk.initialize_terrain_deferred()
-	chunk_ready.emit(chunk.chunk_coords)
-
-
-## Phase 3: Sort pending chunks by distance to camera (nearest first)
-func _sort_chunks_by_camera_distance() -> void:
-	var cam_pos := _get_active_camera_position()
-	_chunks_pending_generation.sort_custom(func(a: MarchingSquaresTerrainChunk, b: MarchingSquaresTerrainChunk) -> bool:
-		return a.position.distance_squared_to(cam_pos) < b.position.distance_squared_to(cam_pos)
-	)
+	if not _async_loader.tick():
+		_async_loader = null
+		set_process(false)
+		terrain_fully_loaded.emit()
 
 
 ## Returns the current camera position (editor or runtime)
@@ -587,7 +576,9 @@ func is_chunk_ready(x: int, z: int) -> bool:
 	var coords := Vector2i(x, z)
 	if not chunks.has(coords):
 		return false
-	return not _chunks_pending_generation.has(chunks[coords])
+	if _async_loader:
+		return not _async_loader.is_chunk_pending(chunks[coords])
+	return true
 
 
 func add_new_chunk(chunk_x: int, chunk_z: int):

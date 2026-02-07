@@ -40,20 +40,49 @@ func regenerate_all_cells() -> void:
 	if not _chunk:
 		printerr("ERROR: _chunk not set while regenerating cells")
 		return
-	
+
 	if not terrain_system:
 		printerr("ERROR: terrain_system not set while regenerating cells")
 		return
-	
+
 	if not multimesh:
 		setup(_chunk)
-	
+
 	if not _chunk.cell_geometry:
 		_chunk.regenerate_mesh()
-	
+
 	for z in range(terrain_system.dimensions.z-1):
 		for x in range(terrain_system.dimensions.x-1):
 			generate_grass_on_cell(Vector2i(x, z))
+
+
+## Call once before incremental grass generation (used by MSTAsyncLoader).
+func begin_incremental() -> void:
+	_terrain_image_cache.clear()
+	if not _chunk or not terrain_system:
+		return
+	if not multimesh:
+		setup(_chunk)
+	if not _chunk.cell_geometry:
+		_chunk.regenerate_mesh()
+
+
+## Process a single row of grass cells at the given Z index.
+## Called by MSTAsyncLoader per-row in camera-sorted order.
+func generate_grass_row(z: int) -> void:
+	for x in range(terrain_system.dimensions.x - 1):
+		generate_grass_on_cell(Vector2i(x, z))
+
+
+## Process grass rows [start_z .. start_z+count). Returns true when all rows are done.
+## Called by MSTAsyncLoader each frame with a small batch of rows.
+func generate_grass_rows(start_z: int, count: int) -> bool:
+	var max_z : int = terrain_system.dimensions.z - 1
+	var end_z : int = mini(start_z + count, max_z)
+	for z in range(start_z, end_z):
+		for x in range(terrain_system.dimensions.x - 1):
+			generate_grass_on_cell(Vector2i(x, z))
+	return end_z >= max_z
 
 
 func generate_grass_on_cell(cell_coords: Vector2i) -> void:
