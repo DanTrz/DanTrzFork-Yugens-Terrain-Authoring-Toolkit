@@ -7,7 +7,7 @@ const ChunkData = preload("res://addons/MarchingSquaresTerrain/resources/mst_chu
 
 # Configuration for BAKED mode
 # If true, these components will be saved to disk. If false, they are generated at runtime.
-const BAKE_COLLISION : bool = false
+const BAKE_COLLISION : bool = true
 const BAKE_GRASS : bool = false
 
 
@@ -36,12 +36,13 @@ static func ensure_directory_exists(path: String) -> bool:
 
 
 ## Get the resolved data directory path for a terrain node
-## Path format: [SceneDir]/[SceneName]_TerrainData/[NodeName]_[data_UID]/
+## Path format: [ParentDir]/[NodeName]_[data_UID]/
+## ParentDir is either the user-set data_directory or auto-generated [SceneDir]/[SceneName]_TerrainData/
 static func get_data_directory(terrain: MarchingSquaresTerrain) -> String:
-	var dir_path := terrain.data_directory
+	var parent_dir := terrain.data_directory
 
-	# If empty, generate default path based on scene location with unique data_UID
-	if dir_path.is_empty():
+	# If empty, generate default parent path based on scene location
+	if parent_dir.is_empty():
 		var tree := terrain.get_tree()
 		if not tree:
 			return ""  # Node not in scene tree yet
@@ -50,21 +51,21 @@ static func get_data_directory(terrain: MarchingSquaresTerrain) -> String:
 		if not scene_root or scene_root.scene_file_path.is_empty():
 			return ""
 
-		# Generate our own data_UID if not set 
-		if terrain._terrain_uid.is_empty():
-			terrain._terrain_uid = generate_terrain_uid()
-
 		var scene_path := scene_root.scene_file_path
 		var scene_dir := scene_path.get_base_dir()
 		var scene_name := scene_path.get_file().get_basename()
-		# Include data_UID in path to prevent collisions when nodes are recreated with same name
-		dir_path = scene_dir.path_join(scene_name + "_TerrainData").path_join(terrain.name + "_" + terrain._terrain_uid) + "/"
+		parent_dir = scene_dir.path_join(scene_name + "_TerrainData")
 
-	# Ensure path ends with /
-	if not dir_path.is_empty() and not dir_path.ends_with("/"):
-		dir_path += "/"
+	# Ensure parent_dir ends with /
+	if not parent_dir.is_empty() and not parent_dir.ends_with("/"):
+		parent_dir += "/"
 
-	return dir_path
+	# Generate our own data_UID if not set
+	if terrain._terrain_uid.is_empty():
+		terrain._terrain_uid = generate_terrain_uid()
+
+	# Always append [TerrainName]_[UID]/ — data_directory is the parent, not the final path
+	return parent_dir + terrain.name + "_" + terrain._terrain_uid + "/"
 
 
 ## Check if metadata.res exists for a chunk
@@ -96,6 +97,9 @@ static func save_all_chunks(terrain: MarchingSquaresTerrain) -> void:
 	# Calculate initial size
 	var initial_size : int = MarchingSquaresFileUtils.get_directory_size_recursive(dir_path)
 
+	# Detect bake config changes — force all chunks dirty if BAKE_COLLISION changed
+	var bake_config_changed : bool = (BAKE_COLLISION != terrain._last_bake_collision)
+
 	var saved_count := 0
 	for chunk_coords in terrain.chunks:
 		var chunk : MarchingSquaresTerrainChunk = terrain.chunks[chunk_coords]
@@ -105,7 +109,7 @@ static func save_all_chunks(terrain: MarchingSquaresTerrain) -> void:
 			continue
 
 		# Determine if chunk needs saving:
-		var needs_save : bool = chunk._data_dirty
+		var needs_save : bool = chunk._data_dirty or bake_config_changed
 		if not needs_save and not metadata_exists(terrain, chunk_coords):
 			needs_save = true
 
@@ -117,6 +121,14 @@ static func save_all_chunks(terrain: MarchingSquaresTerrain) -> void:
 	if saved_count > 0:
 		_report_storage_size_change(terrain, dir_path, initial_size, saved_count)
 		terrain._last_storage_mode = terrain.storage_mode
+		terrain._last_bake_collision = BAKE_COLLISION
+
+	# Clean up old data directory if path was changed via inspector
+	if not terrain._pending_old_data_dir.is_empty() and terrain._pending_old_data_dir != dir_path:
+		if DirAccess.dir_exists_absolute(terrain._pending_old_data_dir):
+			_delete_directory_recursive(terrain._pending_old_data_dir)
+			print_verbose("MSTDataHandler: Cleaned up old data directory: ", terrain._pending_old_data_dir)
+		terrain._pending_old_data_dir = ""
 
 	# Clean up orphaned chunk directories that no longer exist in scene
 	cleanup_orphaned_chunk_files(terrain)

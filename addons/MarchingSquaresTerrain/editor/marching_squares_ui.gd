@@ -233,6 +233,9 @@ func _on_terrain_setting_changed(p_setting_name: String, p_value: Variant) -> vo
 		"default_wall_texture":
 			if p_value is int:
 				terrain.default_wall_texture = p_value
+		"data_directory":
+			if p_value is String:
+				terrain.data_directory = p_value
 		"extra_collision_layer":
 			if p_value is int:
 				# +1 because collision layers don't start from 0 like indexed items

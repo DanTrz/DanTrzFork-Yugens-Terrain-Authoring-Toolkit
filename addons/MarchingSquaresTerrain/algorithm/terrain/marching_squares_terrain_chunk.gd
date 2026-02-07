@@ -43,6 +43,7 @@ var grass_planter : MarchingSquaresGrassPlanter = preload("res://addons/Marching
 var higher_poly_floors : bool = true
 
 var cell_generation_mutex : Mutex = Mutex.new()
+var _cached_chunk_pos : Vector3 = Vector3.ZERO  # Cached on main thread for thread-safe access
 
 # Size of the 2 dimensional cell array (xz value) and y scale (y value)
 var dimensions : Vector3i:
@@ -95,15 +96,54 @@ var upper_thresh : float = 0.7 #, > 0.7 = upper color, middle = blend
 var blend_zone = upper_thresh - lower_thresh
 
 
-# Called by TerrainSystem parent
+# Called by TerrainSystem parent (synchronous — used by editor painting / add_chunk)
 func initialize_terrain(should_regenerate_mesh: bool = true):
+	_prepare_maps_and_collision()
+
+	if not mesh and should_regenerate_mesh:
+		regenerate_mesh(true)
+	elif mesh:
+		# BAKED mode: mesh loaded from disk, populate cell_geometry for grass
+		# (no SurfaceTool needed — Phase 1 decoupled generate_terrain_cells from st.*)
+		generate_terrain_cells(true)
+		# Restore collision
+		_setup_collision()
+
+	grass_planter.setup(self, true)
+	grass_planter.regenerate_all_cells()
+
+
+## Phase 2: Fast path — maps + collision only. No mesh gen or grass. Called during async loading.
+func initialize_terrain_instant():
+	_prepare_maps_and_collision()
+
+	# Restore baked collision immediately (player can walk on terrain before mesh renders)
+	if mesh:
+		_setup_collision()
+
+
+## Phase 2: Heavy path — mesh gen + grass. Called one chunk per frame during async loading.
+func initialize_terrain_deferred():
+	if not mesh:
+		# RUNTIME mode: full mesh generation
+		regenerate_mesh(true)
+	else:
+		# BAKED mode: populate cell_geometry for grass (mesh already loaded from disk)
+		generate_terrain_cells(true)
+
+	grass_planter.setup(self, true)
+	grass_planter.regenerate_all_cells()
+
+
+## Shared setup: needs_update array, grass planter ref, data maps, collision
+func _prepare_maps_and_collision():
 	needs_update = []
-	# Initally all cells will need to be updated to show the newly loaded height
+	# Initially all cells will need to be updated to show the newly loaded height
 	for z in range(dimensions.z - 1):
 		needs_update.append([])
 		for x in range(dimensions.x - 1):
 			needs_update[z].append(true)
-	
+
 	if not grass_planter:
 		grass_planter = get_node_or_null("GrassPlanter")
 		if grass_planter:
@@ -119,26 +159,23 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 	if not grass_mask_map:
 		generate_grass_mask_map()
 
-	if not mesh and should_regenerate_mesh:
-		regenerate_mesh(true)
-	elif mesh:
-		if not _temp_collision_shapes.is_empty():
-			_recreate_collision_body()
-		else:
-			for child in get_children():
-				if child is StaticBody3D:
-					child.free()
-			create_trimesh_collision()
-			for child in get_children():
-				if child is StaticBody3D:
-					child.collision_layer = 17
-					child.set_collision_layer_value(terrain_system.extra_collision_layer, true)
-					for _child in child.get_children():
-						if _child is CollisionShape3D:
-							_child.set_visible(false)
 
-	grass_planter.setup(self, true)
-	grass_planter.regenerate_all_cells()
+## Restores or creates collision from baked shapes or mesh
+func _setup_collision():
+	if not _temp_collision_shapes.is_empty():
+		_recreate_collision_body()
+	else:
+		for child in get_children():
+			if child is StaticBody3D:
+				child.free()
+		create_trimesh_collision()
+		for child in get_children():
+			if child is StaticBody3D:
+				child.collision_layer = 17
+				child.set_collision_layer_value(terrain_system.extra_collision_layer, true)
+				for _child in child.get_children():
+					if _child is CollisionShape3D:
+						_child.set_visible(false)
 
 
 func _notification(what: int) -> void:
@@ -228,14 +265,6 @@ func _exit_tree() -> void:
 
 
 func regenerate_mesh(use_threads: bool = false):
-	st = SurfaceTool.new()
-	if mesh:
-		st.create_from(mesh, 0)
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
-	st.set_custom_format(1, SurfaceTool.CUSTOM_RGBA_FLOAT)
-	st.set_custom_format(2, SurfaceTool.CUSTOM_RGBA_FLOAT)  
-	
 	var start_time: int = Time.get_ticks_msec()
 	
 	if not get_node_or_null("GrassPlanter"):
@@ -259,10 +288,18 @@ func regenerate_mesh(use_threads: bool = false):
 		grass_planter._chunk = self
 	
 	generate_terrain_cells(use_threads)
-	
+
 	if new_chunk:
 		new_chunk = false
-	
+
+	# Create SurfaceTool on main thread and populate from cell_geometry
+	st = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
+	st.set_custom_format(1, SurfaceTool.CUSTOM_RGBA_FLOAT)
+	st.set_custom_format(2, SurfaceTool.CUSTOM_RGBA_FLOAT)
+	_commit_cell_geometry_to_surface_tool()
+
 	st.generate_normals()
 	st.index()
 	# Create a new mesh out of floor, and add the wall surface to it
@@ -290,32 +327,18 @@ func regenerate_mesh(use_threads: bool = false):
 func generate_terrain_cells(use_threads: bool):
 	if not cell_geometry:
 		cell_geometry = {}
-	
+
+	# Cache position on main thread — global_position is not thread-safe
+	_cached_chunk_pos = global_position if is_inside_tree() else position
+
 	var thread_pool := MarchingSquaresThreadPool.new(max(1, OS.get_processor_count()))
 	
 	for z in range(dimensions.z - 1):
 		for x in range(dimensions.x - 1):
 			var cell_coords = Vector2i(x, z)
 			
-			# If geometry did not change, copy already generated geometry and skip this cell
+			# If geometry did not change, skip — cached data will be committed later
 			if not needs_update[z][x]:
-				var verts = cell_geometry[cell_coords]["verts"]
-				var uvs = cell_geometry[cell_coords]["uvs"]
-				var uv2s = cell_geometry[cell_coords]["uv2s"]
-				var colors_0 = cell_geometry[cell_coords]["colors_0"]
-				var colors_1 = cell_geometry[cell_coords]["colors_1"]
-				var grass_mask = cell_geometry[cell_coords]["grass_mask"]
-				var mat_blend = cell_geometry[cell_coords]["mat_blend"]
-				var is_floor = cell_geometry[cell_coords]["is_floor"]
-				for i in range(len(verts)):
-					st.set_smooth_group(0 if is_floor[i] == true else -1)
-					st.set_uv(uvs[i])
-					st.set_uv2(uv2s[i])
-					st.set_color(colors_0[i])
-					st.set_custom(0, colors_1[i])
-					st.set_custom(1, grass_mask[i])
-					st.set_custom(2, mat_blend[i])
-					st.add_vertex(verts[i])
 				continue
 			
 			# Cell is now being updated
@@ -408,6 +431,34 @@ func generate_terrain_cells(use_threads: bool):
 	if use_threads:
 		thread_pool.start()
 		thread_pool.wait()
+
+## Reads all cell_geometry data and feeds it to SurfaceTool (main thread only).
+## Called after generate_terrain_cells() completes, so all worker threads are done.
+func _commit_cell_geometry_to_surface_tool():
+	for z in range(dimensions.z - 1):
+		for x in range(dimensions.x - 1):
+			var cell_coords := Vector2i(x, z)
+			if not cell_geometry.has(cell_coords):
+				continue
+			var data : Dictionary = cell_geometry[cell_coords]
+			var verts : PackedVector3Array = data["verts"]
+			var uvs : PackedVector2Array = data["uvs"]
+			var uv2s : PackedVector2Array = data["uv2s"]
+			var colors_0 : PackedColorArray = data["colors_0"]
+			var colors_1 : PackedColorArray = data["colors_1"]
+			var grass_mask : PackedColorArray = data["grass_mask"]
+			var mat_blend : PackedColorArray = data["mat_blend"]
+			var is_floor : Array = data["is_floor"]
+			for i in range(len(verts)):
+				st.set_smooth_group(0 if is_floor[i] else -1)
+				st.set_uv(uvs[i])
+				st.set_uv2(uv2s[i])
+				st.set_color(colors_0[i])
+				st.set_custom(0, colors_1[i])
+				st.set_custom(1, grass_mask[i])
+				st.set_custom(2, mat_blend[i])
+				st.add_vertex(verts[i])
+
 
 #region Color Interpolation Helpers
 
@@ -519,7 +570,6 @@ func _add_point(cell_coords: Vector2i, x: float, y: float, z: float, uv_x: float
 	# UV - used for ledge detection. X = closeness to top terrace, Y = closeness to bottom of terrace
 	# Walls will always have UV of 1, 1
 	var uv := Vector2(uv_x, uv_y) if floor_mode else Vector2(1, 1)
-	st.set_uv(uv)
 
 	# Detect ridge BEFORE selecting color maps (ridge needs wall colors, not ground colors)
 	var is_ridge := floor_mode and terrain_system.use_ridge_texture and (uv.y > 1.0 - terrain_system.ridge_threshold)
@@ -534,24 +584,20 @@ func _add_point(cell_coords: Vector2i, x: float, y: float, z: float, uv_x: float
 	var lower_0 : Color = cell_wall_lower_color_0 if use_wall_colors else cell_floor_lower_color_0
 	var upper_0 : Color = cell_wall_upper_color_0 if use_wall_colors else cell_floor_upper_color_0
 	var color_0 := _interpolate_vertex_color(cell_coords, x, y, z, source_map_0, diag_midpoint, lower_0, upper_0)
-	st.set_color(color_0)
 
 	var lower_1 : Color = cell_wall_lower_color_1 if use_wall_colors else cell_floor_lower_color_1
 	var upper_1 : Color = cell_wall_upper_color_1 if use_wall_colors else cell_floor_upper_color_1
 	var color_1 := _interpolate_vertex_color(cell_coords, x, y, z, source_map_1, diag_midpoint, lower_1, upper_1)
-	st.set_custom(0, color_1)
 
 	# is_ridge already calculated above
 	var g_mask: Color = grass_mask_map[cell_coords.y*dimensions.x + cell_coords.x]
 	g_mask.g = 1.0 if is_ridge else 0.0
-	st.set_custom(1, g_mask)
 	
 	# Use edge connection to determine blending path
 	# Avoid issues on weird Cliffs vs Slopes blending giving each a different path
 	var mat_blend : Color = calculate_material_blend_data(cell_coords, x, z, source_map_0, source_map_1)
 	if cell_has_walls_for_blend and floor_mode:
-		mat_blend.a = 2.0 
-	st.set_custom(2, mat_blend)
+		mat_blend.a = 2.0
 	
 	#same calculations from here
 	var vert = Vector3((cell_coords.x+x) * cell_size.x, y, (cell_coords.y+z) * cell_size.y)
@@ -559,13 +605,8 @@ func _add_point(cell_coords: Vector2i, x: float, y: float, z: float, uv_x: float
 	if floor_mode:
 		uv2 = Vector2(vert.x, vert.z) / cell_size
 	else:
-		# This avoids is_inside_tree() errors when inactive scene tabs are loaded
-		var chunk_pos : Vector3 = global_position if is_inside_tree() else position
-		var global_pos = vert + chunk_pos
+		var global_pos = vert + _cached_chunk_pos
 		uv2 = (Vector2(global_pos.x, global_pos.y) + Vector2(global_pos.z, global_pos.y))
-	
-	st.set_uv2(uv2)
-	st.add_vertex(vert)
 	
 	cell_geometry[cell_coords]["verts"].append(vert)
 	cell_geometry[cell_coords]["uvs"].append(uv)
@@ -730,12 +771,10 @@ var floor_mode : bool = true
 
 func _start_floor():
 	floor_mode = true
-	st.set_smooth_group(0)
 
 
 func _start_wall():
 	floor_mode = false
-	st.set_smooth_group(-1)
 
 
 func generate_height_map():

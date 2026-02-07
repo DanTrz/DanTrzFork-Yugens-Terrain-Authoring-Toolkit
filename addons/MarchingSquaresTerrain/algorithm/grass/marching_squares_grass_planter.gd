@@ -7,6 +7,7 @@ const GRASS_ALPHA_VALUES := [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
 
 var _chunk : MarchingSquaresTerrainChunk
 var terrain_system : MarchingSquaresTerrain
+var _terrain_image_cache : Dictionary = {}  # texture_id -> Image
 
 
 func setup(chunk: MarchingSquaresTerrainChunk, redo: bool = true):
@@ -34,6 +35,7 @@ func setup(chunk: MarchingSquaresTerrainChunk, redo: bool = true):
 
 
 func regenerate_all_cells() -> void:
+	_terrain_image_cache.clear()
 	# Safety checks:
 	if not _chunk:
 		printerr("ERROR: _chunk not set while regenerating cells")
@@ -170,6 +172,9 @@ func generate_grass_on_cell(cell_coords: Vector2i) -> void:
 
 
 func _get_terrain_image(texture_id: int) -> Image:
+	if _terrain_image_cache.has(texture_id):
+		return _terrain_image_cache[texture_id]
+
 	var terrain_texture : Texture2D = null
 	var material = terrain_system.terrain_material
 	match texture_id:
@@ -187,11 +192,13 @@ func _get_terrain_image(texture_id: int) -> Image:
 			terrain_texture = material.get_shader_parameter("vc_tex_rr")
 	if terrain_texture == null:
 		printerr("ERROR: [MarchingSquaresGrassPlanter] couldn't find the terrain's ShaderMaterial texture " + str(texture_id))
+		_terrain_image_cache[texture_id] = null
 		return null
-	
+
 	var img : Image = terrain_texture.get_image()
 	if img:
 		img.decompress()
+	_terrain_image_cache[texture_id] = img
 	return img
 
 

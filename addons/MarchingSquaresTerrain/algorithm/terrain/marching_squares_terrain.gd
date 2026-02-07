@@ -2,6 +2,10 @@
 extends Node3D
 class_name MarchingSquaresTerrain
 
+## Emitted when a single chunk finishes async generation (mesh + grass ready)
+signal chunk_ready(chunk_coords: Vector2i)
+## Emitted when ALL chunks have finished async generation
+signal terrain_fully_loaded
 
 enum StorageMode {
 	## Saves load time. Loads a pre-built visual mesh from disk.
@@ -25,18 +29,26 @@ enum StorageMode {
 					chunk.mark_dirty()
 			print_verbose("MST: Storage mode changed. All chunks marked for save.")
 
-## The folder where this terrain's data is saved. 
-## If left empty, it automatically fills with a folder name relative to your scene file.
-## Note: Manually setting a path locks the save location even if you rename the terrain node later.
+## Parent folder where this terrain's data is saved.
+## The system creates a subfolder: [TerrainName]_[UID]/chunk_X_Y/metadata.res
+## If left empty, defaults to [SceneDir]/[SceneName]_TerrainData/
 @export_dir var data_directory : String = "":
 	set(value):
-		if Engine.is_editor_hint() and value.is_empty():
-			var auto_path := MSTDataHandler.get_data_directory(self)
-			if not auto_path.is_empty():
-				data_directory = auto_path
-				notify_property_list_changed()
-				return
+		var old_resolved := MSTDataHandler.get_data_directory(self) if _storage_initialized else ""
 		data_directory = value
+		var new_resolved := MSTDataHandler.get_data_directory(self)
+		# When path actually changed: delete old folder, mark chunks dirty, save to new location
+		if _storage_initialized and not old_resolved.is_empty() and old_resolved != new_resolved:
+			if DirAccess.dir_exists_absolute(old_resolved):
+				_pending_old_data_dir = old_resolved
+			# Mark all chunks dirty so they re-save to the new path
+			if chunks:
+				for chunk in chunks.values():
+					chunk.mark_dirty()
+			# Trigger immediate save to new location (also handles old folder cleanup)
+			if Engine.is_editor_hint():
+				MSTDataHandler.save_all_chunks(self)
+		notify_property_list_changed()
 
 ## Unique identifier for this terrain instance (auto-generated on first save)
 ## Prevents path collisions when nodes are recreated with same name
@@ -48,6 +60,12 @@ enum StorageMode {
 
 ## Tracks the mode used during the last successful save for reporting purposes
 @export_storage var _last_storage_mode : StorageMode = StorageMode.BAKED
+
+## Tracks the last known BAKE_COLLISION setting to detect config changes
+@export_storage var _last_bake_collision : bool = false
+
+## Temporary: old data directory path pending cleanup on next save
+var _pending_old_data_dir : String = ""
 
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var dimensions : Vector3i = Vector3i(33, 32, 33): # Total amount of height values in X and Z direction, and total height range
 	set(value):
@@ -454,6 +472,10 @@ var is_batch_updating : bool = false
 
 var chunks : Dictionary = {}
 
+# Phase 2: Async loading — spread chunk generation across frames
+var _chunks_pending_generation : Array[MarchingSquaresTerrainChunk] = []
+var _is_async_loading : bool = false
+
 
 func _init() -> void:
 	# Create unique copies of shared resources for this node instance
@@ -462,6 +484,7 @@ func _init() -> void:
 	var base_grass_mesh := preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/mst_grass_mesh.tres")
 	grass_mesh = base_grass_mesh.duplicate(true)
 	grass_mesh.material = base_grass_mesh.material.duplicate(true)
+	set_process(false)  # Only enable during async loading
 
 
 func _notification(what: int) -> void:
@@ -482,7 +505,7 @@ func _initialize_data_directory() -> void:
 
 func _deferred_enter_tree() -> void:
 	_initialize_data_directory()
-	
+
 	# Apply all persisted textures/colors to this terrain's unique shader materials
 	# This is needed because _init() creates fresh duplicated materials that don't have
 	# the terrain's saved texture values - only the base resource defaults
@@ -503,13 +526,68 @@ func _deferred_enter_tree() -> void:
 		# Auto-migrate embedded data to external storage (editor only)
 		MSTDataHandler.migrate_to_external_storage(self)
 
-	# Initialize all chunks (regenerate mesh/grass from loaded data)
+	# Phase 2: Async loading — instant pass (maps + collision), defer heavy work
+	_chunks_pending_generation.clear()
 	for chunk in chunks.values():
-		chunk.initialize_terrain(true)
+		chunk.initialize_terrain_instant()
+		_chunks_pending_generation.append(chunk)
+
+	# Phase 3: Sort queue so chunks closest to camera generate first
+	_sort_chunks_by_camera_distance()
+
+	if not _chunks_pending_generation.is_empty():
+		_is_async_loading = true
+		set_process(true)
+
+
+func _process(_delta: float) -> void:
+	if _chunks_pending_generation.is_empty():
+		if _is_async_loading:
+			_is_async_loading = false
+			set_process(false)
+			terrain_fully_loaded.emit()
+		return
+
+	var chunk := _chunks_pending_generation.pop_front()
+	chunk.initialize_terrain_deferred()
+	chunk_ready.emit(chunk.chunk_coords)
+
+
+## Phase 3: Sort pending chunks by distance to camera (nearest first)
+func _sort_chunks_by_camera_distance() -> void:
+	var cam_pos := _get_active_camera_position()
+	_chunks_pending_generation.sort_custom(func(a: MarchingSquaresTerrainChunk, b: MarchingSquaresTerrainChunk) -> bool:
+		return a.position.distance_squared_to(cam_pos) < b.position.distance_squared_to(cam_pos)
+	)
+
+
+## Returns the current camera position (editor or runtime)
+func _get_active_camera_position() -> Vector3:
+	if Engine.is_editor_hint():
+		var viewport := EditorInterface.get_editor_viewport_3d()
+		if viewport:
+			var cam := viewport.get_camera_3d()
+			if cam:
+				return cam.global_position
+	else:
+		var viewport := get_viewport()
+		if viewport:
+			var cam := viewport.get_camera_3d()
+			if cam:
+				return cam.global_position
+	return Vector3.ZERO
 
 
 func has_chunk(x: int, z: int) -> bool:
 	return chunks.has(Vector2i(x, z))
+
+
+## Returns true if the chunk at (x, z) has finished async generation
+func is_chunk_ready(x: int, z: int) -> bool:
+	var coords := Vector2i(x, z)
+	if not chunks.has(coords):
+		return false
+	return not _chunks_pending_generation.has(chunks[coords])
 
 
 func add_new_chunk(chunk_x: int, chunk_z: int):
