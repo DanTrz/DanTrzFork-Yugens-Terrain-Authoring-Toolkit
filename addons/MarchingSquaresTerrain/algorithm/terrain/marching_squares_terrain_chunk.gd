@@ -96,15 +96,14 @@ var upper_thresh : float = 0.7 #, > 0.7 = upper color, middle = blend
 var blend_zone = upper_thresh - lower_thresh
 
 
-# Called by TerrainSystem parent (synchronous — used by editor painting / add_chunk)
+# Sync init (editor painting / add_chunk)
 func initialize_terrain(should_regenerate_mesh: bool = true):
 	_prepare_maps_and_collision()
 
 	if not mesh and should_regenerate_mesh:
 		regenerate_mesh(true)
 	elif mesh:
-		# BAKED mode: mesh loaded from disk, populate cell_geometry for grass
-		# (no SurfaceTool needed — Phase 1 decoupled generate_terrain_cells from st.*)
+		# BAKED: just populate cell_geometry for grass (mesh already loaded)
 		generate_terrain_cells(true)
 		# Restore collision
 		_setup_collision()
@@ -113,7 +112,7 @@ func initialize_terrain(should_regenerate_mesh: bool = true):
 	grass_planter.regenerate_all_cells()
 
 
-## Phase 2: Fast path — maps + collision only. No mesh gen or grass. Called during async loading.
+## Quick init: maps + collision only. Mesh and grass are handled by the async loader.
 func initialize_terrain_instant():
 	_prepare_maps_and_collision()
 
@@ -123,20 +122,6 @@ func initialize_terrain_instant():
 		_create_heightmap_collision()  # RUNTIME: approximate collision from height_map
 
 
-## Phase 2: Heavy path — mesh gen + grass. Called one chunk per frame during async loading.
-func initialize_terrain_deferred():
-	if not mesh:
-		# RUNTIME mode: full mesh generation
-		regenerate_mesh(true)
-	else:
-		# BAKED mode: populate cell_geometry for grass (mesh already loaded from disk)
-		generate_terrain_cells(true)
-
-	grass_planter.setup(self, true)
-	grass_planter.regenerate_all_cells()
-
-
-## Shared setup: needs_update array, grass planter ref, data maps, collision
 func _prepare_maps_and_collision():
 	needs_update = []
 	# Initially all cells will need to be updated to show the newly loaded height
@@ -179,8 +164,7 @@ func _setup_collision():
 						_child.set_visible(false)
 
 
-## Creates approximate collision from height_map for RUNTIME mode (no baked mesh yet).
-## Provides instant walkable surface. Replaced by real trimesh when commit_mesh_sync() runs.
+## Temp collision from height_map (RUNTIME). Replaced by trimesh after mesh gen.
 func _create_heightmap_collision():
 	var map_w : int = dimensions.x
 	var map_d : int = dimensions.z
@@ -206,10 +190,8 @@ func _create_heightmap_collision():
 	body.add_child(col)
 	add_child(body)
 
-	# HeightMapShape3D covers a 1-unit-per-sample grid centered at origin.
-	# Scale and offset to match our cell_size coordinates.
-	# Shape spans [-map_w/2..+map_w/2] x [-map_d/2..+map_d/2] in local space.
-	# Chunk spans [0..(map_w-1)*cell_size.x] x [0..(map_d-1)*cell_size.y].
+	# HeightMapShape3D is centered at origin, 1 unit per sample.
+	# Offset + scale to match our chunk's cell_size layout.
 	body.position = Vector3(
 		(map_w - 1) * cell_size.x * 0.5,
 		0.0,
@@ -368,7 +350,7 @@ func generate_terrain_cells(use_threads: bool):
 	if not cell_geometry:
 		cell_geometry = {}
 
-	# Cache position on main thread — global_position is not thread-safe
+	# global_position is not thread-safe, cache it here
 	_cached_chunk_pos = global_position if is_inside_tree() else position
 
 	var pool := MarchingSquaresThreadPool.new(max(1, OS.get_processor_count()))
@@ -379,9 +361,7 @@ func generate_terrain_cells(use_threads: bool):
 		pool.wait()
 
 
-## Creates thread pool with cell jobs enqueued and started. Returns pool handle (no wait).
-## Called by MSTAsyncLoader — the loader polls is_done() and calls wait().
-## Grass is NOT included — the loader handles grass incrementally on the main thread.
+## Start cell generation on workers. Returns pool handle (caller polls is_done).
 func create_cell_generation_pool() -> MarchingSquaresThreadPool:
 	if not cell_geometry:
 		cell_geometry = {}
@@ -394,11 +374,9 @@ func create_cell_generation_pool() -> MarchingSquaresThreadPool:
 	return pool
 
 
-## Commits cell_geometry to mesh (RUNTIME) or skips (BAKED). Main thread only.
-## Called by MSTAsyncLoader after cell generation pool finishes.
+## Build mesh from cell_geometry (RUNTIME only, skips if mesh already loaded).
 func commit_mesh_sync():
 	if not mesh:
-		# RUNTIME: build mesh from cell_geometry
 		st = SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
 		st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
@@ -413,8 +391,6 @@ func commit_mesh_sync():
 		_setup_collision()
 
 
-## Enqueues cell generation jobs into the given thread pool.
-## with_grass: if true, also generates grass per cell (sync path). If false, cells only (async path).
 func _enqueue_cell_jobs(pool: MarchingSquaresThreadPool, use_threads: bool, with_grass: bool):
 	for z in range(dimensions.z - 1):
 		for x in range(dimensions.x - 1):
@@ -516,8 +492,7 @@ func _enqueue_cell_jobs(pool: MarchingSquaresThreadPool, use_threads: bool, with
 			else:
 				work_load.call()
 
-## Reads all cell_geometry data and feeds it to SurfaceTool (main thread only).
-## Called after generate_terrain_cells() completes, so all worker threads are done.
+## Feed cell_geometry into SurfaceTool (main thread only).
 func _commit_cell_geometry_to_surface_tool():
 	for z in range(dimensions.z - 1):
 		for x in range(dimensions.x - 1):

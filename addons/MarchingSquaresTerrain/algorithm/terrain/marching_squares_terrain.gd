@@ -2,9 +2,7 @@
 extends Node3D
 class_name MarchingSquaresTerrain
 
-## Emitted when a single chunk finishes async generation (mesh + grass ready)
 signal chunk_ready(chunk_coords: Vector2i)
-## Emitted when ALL chunks have finished async generation
 signal terrain_fully_loaded
 
 enum StorageMode {
@@ -462,8 +460,7 @@ var _pending_old_data_dir : String = ""
 # Default is 5 (Texture 6 in 1-indexed UI terms)
 @export_storage var default_wall_texture : int = 5
 
-## How many grass rows to process per frame during async loading.
-## Higher = faster grass appearance, but more FPS impact during loading.
+## Grass rows per frame during loading. Higher = faster but heavier on FPS.
 @export_range(1, 48) var grass_rows_per_frame : int = 24
 
 var void_texture := preload("res://addons/MarchingSquaresTerrain/resources/plugin materials/void_texture.tres")
@@ -476,7 +473,6 @@ var is_batch_updating : bool = false
 
 var chunks : Dictionary = {}
 
-# Phase 5: Async loader — drives chunks through phases across frames
 var _async_loader : MSTAsyncLoader = null
 
 
@@ -529,11 +525,11 @@ func _deferred_enter_tree() -> void:
 		# Auto-migrate embedded data to external storage (editor only)
 		MSTDataHandler.migrate_to_external_storage(self)
 
-	# Instant pass: maps + collision for every chunk (fast)
+	# Quick pass: load maps + collision for every chunk
 	for chunk in chunks.values():
 		chunk.initialize_terrain_instant()
 
-	# Phase 5: Start async loader — drives chunks through phases across frames
+	# Async loader handles mesh + grass progressively
 	_async_loader = MSTAsyncLoader.new()
 	_async_loader.chunk_ready.connect(func(coords: Vector2i): chunk_ready.emit(coords))
 	_async_loader.start(chunks.values(), _get_active_camera_position(), grass_rows_per_frame)
@@ -550,7 +546,6 @@ func _process(_delta: float) -> void:
 		terrain_fully_loaded.emit()
 
 
-## Returns the current camera position (editor or runtime)
 func _get_active_camera_position() -> Vector3:
 	if Engine.is_editor_hint():
 		var viewport := EditorInterface.get_editor_viewport_3d()
@@ -571,7 +566,6 @@ func has_chunk(x: int, z: int) -> bool:
 	return chunks.has(Vector2i(x, z))
 
 
-## Returns true if the chunk at (x, z) has finished async generation
 func is_chunk_ready(x: int, z: int) -> bool:
 	var coords := Vector2i(x, z)
 	if not chunks.has(coords):

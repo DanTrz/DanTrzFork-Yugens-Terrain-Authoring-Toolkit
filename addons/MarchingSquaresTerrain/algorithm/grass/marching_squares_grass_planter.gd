@@ -4,10 +4,12 @@ class_name MarchingSquaresGrassPlanter
 
 # Alpha values for grass sprites by texture ID (1-6)
 const GRASS_ALPHA_VALUES := [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+const STRIDE : int = 16  # floats per instance: 12 (Transform3D) + 4 (custom_data)
 
 var _chunk : MarchingSquaresTerrainChunk
 var terrain_system : MarchingSquaresTerrain
 var _terrain_image_cache : Dictionary = {}  # texture_id -> Image
+var _grass_buffer : PackedFloat32Array = PackedFloat32Array()
 
 
 func setup(chunk: MarchingSquaresTerrainChunk, redo: bool = true):
@@ -51,12 +53,14 @@ func regenerate_all_cells() -> void:
 	if not _chunk.cell_geometry:
 		_chunk.regenerate_mesh()
 
+	_init_grass_buffer()
 	for z in range(terrain_system.dimensions.z-1):
 		for x in range(terrain_system.dimensions.x-1):
 			generate_grass_on_cell(Vector2i(x, z))
+	commit_grass_buffer()
 
 
-## Call once before incremental grass generation (used by MSTAsyncLoader).
+## Prepare for row-by-row grass generation.
 func begin_incremental() -> void:
 	_terrain_image_cache.clear()
 	if not _chunk or not terrain_system:
@@ -65,17 +69,16 @@ func begin_incremental() -> void:
 		setup(_chunk)
 	if not _chunk.cell_geometry:
 		_chunk.regenerate_mesh()
+	_init_grass_buffer()
 
 
-## Process a single row of grass cells at the given Z index.
-## Called by MSTAsyncLoader per-row in camera-sorted order.
+## Generate grass for all cells in row z.
 func generate_grass_row(z: int) -> void:
 	for x in range(terrain_system.dimensions.x - 1):
 		generate_grass_on_cell(Vector2i(x, z))
 
 
-## Process grass rows [start_z .. start_z+count). Returns true when all rows are done.
-## Called by MSTAsyncLoader each frame with a small batch of rows.
+## Generate grass for rows [start_z .. start_z+count). Returns true when all done.
 func generate_grass_rows(start_z: int, count: int) -> bool:
 	var max_z : int = terrain_system.dimensions.z - 1
 	var end_z : int = mini(start_z + count, max_z)
@@ -332,7 +335,23 @@ func _sample_terrain_texture_color(position: Vector3, texture_id: int, tex_scale
 	return terrain_image.get_pixelv(Vector2(px, py))
 
 
-## Creates a grass instance at the given position with proper transform and color
+## Fill buffer with hidden instances (positioned offscreen).
+func _init_grass_buffer() -> void:
+	_grass_buffer.resize(multimesh.instance_count * STRIDE)
+	_grass_buffer.fill(0.0)
+	for i in range(multimesh.instance_count):
+		var off : int = i * STRIDE
+		_grass_buffer[off + 3] = 9999.0   # origin.x
+		_grass_buffer[off + 7] = 9999.0   # origin.y
+		_grass_buffer[off + 11] = 9999.0  # origin.z
+
+
+## Flush buffer to MultiMesh.
+func commit_grass_buffer() -> void:
+	if _grass_buffer.size() > 0 and multimesh:
+		multimesh.buffer = _grass_buffer
+
+
 func _create_grass_instance(index: int, position: Vector3, a: Vector3, b: Vector3, c: Vector3, texture_id: int) -> void:
 	var edge1 := b - a
 	var edge2 := c - a
@@ -340,19 +359,32 @@ func _create_grass_instance(index: int, position: Vector3, a: Vector3, b: Vector
 
 	var right := Vector3.FORWARD.cross(normal).normalized()
 	var forward := normal.cross(Vector3.RIGHT).normalized()
-	var instance_basis := Basis(right, forward, -normal)
+	var b_ := Basis(right, forward, -normal)
 
-	multimesh.set_instance_transform(index, Transform3D(instance_basis, position))
+	var off : int = index * STRIDE
+	_grass_buffer[off + 0] = b_.x.x
+	_grass_buffer[off + 1] = b_.y.x
+	_grass_buffer[off + 2] = b_.z.x
+	_grass_buffer[off + 3] = position.x
+	_grass_buffer[off + 4] = b_.x.y
+	_grass_buffer[off + 5] = b_.y.y
+	_grass_buffer[off + 6] = b_.z.y
+	_grass_buffer[off + 7] = position.y
+	_grass_buffer[off + 8] = b_.x.z
+	_grass_buffer[off + 9] = b_.y.z
+	_grass_buffer[off + 10] = b_.z.z
+	_grass_buffer[off + 11] = position.z
 
+	# Custom data (RGBA as 4 floats)
 	var tex_scale := _get_texture_scale(texture_id)
-	var instance_color := _sample_terrain_texture_color(position, texture_id, tex_scale)
-	instance_color.a = _get_grass_alpha(texture_id)
+	var col := _sample_terrain_texture_color(position, texture_id, tex_scale)
+	_grass_buffer[off + 12] = col.r
+	_grass_buffer[off + 13] = col.g
+	_grass_buffer[off + 14] = col.b
+	_grass_buffer[off + 15] = _get_grass_alpha(texture_id)
 
-	multimesh.set_instance_custom_data(index, instance_color)
 
-
-## Hides a grass instance by setting it to zero scale at a far position
-func _hide_grass_instance(index: int) -> void:
-	multimesh.set_instance_transform(index, Transform3D(Basis.from_scale(Vector3.ZERO), Vector3(9999, 9999, 9999)))
+func _hide_grass_instance(_index: int) -> void:
+	pass
 
 #endregion

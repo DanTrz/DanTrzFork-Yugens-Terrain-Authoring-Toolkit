@@ -1,6 +1,4 @@
-## Orchestrates async chunk loading across multiple frames.
-## Drives chunks through phases: IDLE → CELLS_GENERATING → MESH_COMMIT → GRASS → IDLE
-## Created by MarchingSquaresTerrain during _deferred_enter_tree().
+## Loads chunks progressively: IDLE → CELLS_GENERATING → MESH_COMMIT → GRASS
 extends RefCounted
 class_name MSTAsyncLoader
 
@@ -14,6 +12,8 @@ var _queue : Array[MarchingSquaresTerrainChunk] = []
 var _phase : Phase = Phase.IDLE
 var _active_chunk : MarchingSquaresTerrainChunk = null
 var _active_pool : MarchingSquaresThreadPool = null
+var _prefetch_chunk : MarchingSquaresTerrainChunk = null
+var _prefetch_pool : MarchingSquaresThreadPool = null
 var _cam_pos : Vector3 = Vector3.ZERO
 var _grass_row_order : Array[int] = []
 var _grass_row_idx : int = 0
@@ -27,20 +27,37 @@ func start(p_chunks: Array, cam_pos: Vector3, p_grass_rows_per_frame: int = 8) -
 	_sort_by_distance(cam_pos)
 
 
-## Called once per frame by terrain._process(). Returns true if still working.
+## Pre-generate next chunk's cells while current chunk does mesh/grass.
+func _start_prefetch() -> void:
+	if _prefetch_pool or _queue.is_empty():
+		return
+	_prefetch_chunk = _queue.pop_front()
+	_prefetch_pool = _prefetch_chunk.create_cell_generation_pool()
+
+
+## Advance one step. Returns false when all chunks are done.
 func tick() -> bool:
 	match _phase:
 		Phase.IDLE:
-			if _queue.is_empty():
+			if _prefetch_chunk:
+				# Prefetch ready — promote to active
+				_active_chunk = _prefetch_chunk
+				_active_pool = _prefetch_pool
+				_prefetch_chunk = null
+				_prefetch_pool = null
+				_phase = Phase.CELLS_GENERATING
+			elif _queue.is_empty():
 				return false
-			_active_chunk = _queue.pop_front()
-			_active_pool = _active_chunk.create_cell_generation_pool()
-			_phase = Phase.CELLS_GENERATING
+			else:
+				_active_chunk = _queue.pop_front()
+				_active_pool = _active_chunk.create_cell_generation_pool()
+				_phase = Phase.CELLS_GENERATING
 
 		Phase.CELLS_GENERATING:
 			if _active_pool.is_done():
 				_active_pool.wait()
 				_active_pool = null
+				_start_prefetch()
 				_phase = Phase.MESH_COMMIT
 
 		Phase.MESH_COMMIT:
@@ -58,6 +75,7 @@ func tick() -> bool:
 				_active_chunk.grass_planter.generate_grass_row(
 					_grass_row_order[_grass_row_idx])
 				_grass_row_idx += 1
+			_active_chunk.grass_planter.commit_grass_buffer()
 			if _grass_row_idx >= total_rows:
 				chunk_ready.emit(_active_chunk.chunk_coords)
 				_active_chunk = null
@@ -66,10 +84,10 @@ func tick() -> bool:
 
 
 func is_chunk_pending(chunk: MarchingSquaresTerrainChunk) -> bool:
-	return _queue.has(chunk) or _active_chunk == chunk
+	return _queue.has(chunk) or _active_chunk == chunk or _prefetch_chunk == chunk
 
 
-## Computes grass row indices sorted by Z-distance to camera (nearest first).
+## Grass row indices sorted nearest-to-camera first.
 func _compute_grass_row_order(chunk: MarchingSquaresTerrainChunk) -> Array[int]:
 	var max_z : int = chunk.terrain_system.dimensions.z - 1
 	var order : Array[int] = []

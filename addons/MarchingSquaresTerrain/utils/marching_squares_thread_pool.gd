@@ -29,8 +29,7 @@ func wait():
 			t.wait_to_finish()
 
 
-## Non-blocking check: returns true when all worker threads have exited.
-## Call wait() after this returns true to join threads.
+## True when all workers finished. Call wait() after to join threads.
 func is_done() -> bool:
 	_finish_mutex.lock()
 	var done := _finished_count >= threads.size()
