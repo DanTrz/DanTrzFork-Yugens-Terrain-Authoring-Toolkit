@@ -537,10 +537,10 @@ func _add_point(cell_coords: Vector2i, x: float, y: float, z: float, uv_x: float
 	st.set_uv(uv)
 	
 	# Detect ridge BEFORE selecting color maps (ridge needs wall colors, not ground colors)
-	var is_ridge := floor_mode and (uv.y > 1.0 - terrain_system.ridge_threshold)
-	var is_ledge := floor_mode and (uv.x > 1.0 - terrain_system.ledge_threshold)
+	var is_ridge := floor_mode and (uv.y > 0.0)
+	var is_ledge := floor_mode and (uv.x > 0.0)
 	
-	# Get color source maps based on floor/wall/ridge state
+	# Get color source maps based on floor state
 	var sources := _get_color_sources(floor_mode)
 	var source_map_0 : PackedColorArray = sources[0]
 	var source_map_1 : PackedColorArray = sources[1]

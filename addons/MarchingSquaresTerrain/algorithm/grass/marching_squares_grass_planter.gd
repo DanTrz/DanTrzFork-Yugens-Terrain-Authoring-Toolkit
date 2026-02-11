@@ -141,7 +141,7 @@ func generate_grass_on_cell(cell_coords: Vector2i) -> void:
 				
 				# Don't place grass on ledges
 				var uv = uvs[i]*u + uvs[i+1]*v + uvs[i+2]*(1-u-v)
-				var on_ledge: bool = uv.x > 1-_chunk.terrain_system.ledge_threshold or uv.y > 1-_chunk.terrain_system.ridge_threshold
+				var on_ledge_or_ridge: bool = uv.y > 0.0 or uv.x > 0.5
 				
 				var color_0 = _chunk.get_dominant_color(colors_0[i]*u + colors_0[i+1]*v + colors_0[i+2]*(1-u-v))
 				var color_1 = _chunk.get_dominant_color(colors_1[i]*u + colors_1[i+1]*v + colors_1[i+2]*(1-u-v))
@@ -154,7 +154,7 @@ func generate_grass_on_cell(cell_coords: Vector2i) -> void:
 				var texture_id := _get_texture_id(color_0, color_1)
 				var on_grass_tex := _has_grass_for_texture(texture_id, force_grass_on)
 
-				if on_grass_tex and not on_ledge and not is_masked:
+				if on_grass_tex and not on_ledge_or_ridge and not is_masked:
 					_create_grass_instance(index, p, a, b, c, texture_id)
 				else:
 					_hide_grass_instance(index)

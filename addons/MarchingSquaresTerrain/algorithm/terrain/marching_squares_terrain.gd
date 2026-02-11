@@ -85,15 +85,11 @@ enum StorageMode {
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var ridge_threshold: float = 1.0:
 	set(value):
 		ridge_threshold = value
-		terrain_material.set_shader_parameter("ridge_threshhold", value)
-		for chunk: MarchingSquaresTerrainChunk in chunks.values():
-			chunk.grass_planter.regenerate_all_cells()
+		terrain_material.set_shader_parameter("ridge_threshold", value)
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var ledge_threshold: float = 1.0:
 	set(value):
 		ledge_threshold = value
-		terrain_material.set_shader_parameter("ledge_threshhold", value)
-		for chunk: MarchingSquaresTerrainChunk in chunks.values():
-			chunk.grass_planter.regenerate_all_cells()
+		terrain_material.set_shader_parameter("ledge_threshold", value)
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE) var use_ridge_texture: bool = true:
 	set(value):
 		use_ridge_texture = value
