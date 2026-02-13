@@ -531,13 +531,13 @@ func add_full_floor(chunk: MarchingSquaresTerrainChunk):
 		add_point(0, ay, 0, 0, 0)
 		add_point(0.5, ey, 0.5, 0, 0, true)
 	else:
-	add_point(0, ay, 0, 0, 0)
-	add_point(1, by, 0, 0, 0)
-	add_point(0, cy, 1, 0, 0)
-	
-	add_point(1, dy, 1, 0, 0)
-	add_point(0, cy, 1, 0, 0)
-	add_point(1, by, 0, 0, 0)
+		add_point(0, ay, 0, 0, 0)
+		add_point(1, by, 0, 0, 0)
+		add_point(0, cy, 1, 0, 0)
+		
+		add_point(1, dy, 1, 0, 0)
+		add_point(0, cy, 1, 0, 0)
+		add_point(1, by, 0, 0, 0)
 
 
 # Add an outer corner, where A is the raised corner.
