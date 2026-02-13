@@ -53,6 +53,8 @@ func regenerate_all_cells() -> void:
 	for z in range(terrain_system.dimensions.z-1):
 		for x in range(terrain_system.dimensions.x-1):
 			generate_grass_on_cell(Vector2i(x, z))
+	
+	multimesh.mesh.center_offset.y = multimesh.mesh.size.y / 2 # Stops floating grass bug on startup
 
 
 func generate_grass_on_cell(cell_coords: Vector2i) -> void:
@@ -318,6 +320,6 @@ func _create_grass_instance(index: int, position: Vector3, a: Vector3, b: Vector
 
 ## Hides a grass instance by setting it to zero scale at a far position
 func _hide_grass_instance(index: int) -> void:
-	multimesh.set_instance_transform(index, Transform3D(Basis.from_scale(Vector3.ZERO), Vector3(9999, 9999, 9999)))
+	multimesh.set_instance_transform(index, Transform3D(Basis.from_scale(Vector3.ZERO), Vector3.ZERO))
 
 #endregion

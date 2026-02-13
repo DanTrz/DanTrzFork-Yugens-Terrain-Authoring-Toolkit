@@ -130,10 +130,10 @@ texture_15 = SubResource("Texture2D_fpfsv")
 current_texture_preset = SubResource("Resource_j2hbo")
 metadata/_custom_type_script = "uid://cddg1xr5hye1d"
 
-[node name="Chunk (0, 0)" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/MarchingSquaresTerrain" unique_id=1890286079 node_paths=PackedStringArray("terrain_system")]
+[node name="Chunk (0, 0)" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/MarchingSquaresTerrain" unique_id=1257744056 node_paths=PackedStringArray("terrain_system")]
 script = ExtResource("4_0xhur")
 terrain_system = NodePath("..")
 
-[node name="GrassPlanter" type="MultiMeshInstance3D" parent="SubViewportContainer/SubViewport/MarchingSquaresTerrain/Chunk (0, 0)" unique_id=507324189]
+[node name="GrassPlanter" type="MultiMeshInstance3D" parent="SubViewportContainer/SubViewport/MarchingSquaresTerrain/Chunk (0, 0)" unique_id=1352569452]
 cast_shadow = 0
 script = ExtResource("5_rcx4y")
