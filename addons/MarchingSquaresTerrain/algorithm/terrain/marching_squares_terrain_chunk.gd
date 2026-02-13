@@ -323,8 +323,11 @@ func generate_terrain_cells(use_threads: bool):
 				"is_floor": [],
 			}
 			
-			var cell := MarchingSquaresTerrainCell.new(self, height_map[z][x], height_map[z][x+1], height_map[z+1][x], height_map[z+1][x+1], merge_threshold)
-				
+			var color_helper := MarchingSquaresTerrainVertexColorHelper.new()
+			var cell := MarchingSquaresTerrainCell.new(self, color_helper, height_map[z][x], height_map[z][x+1], height_map[z+1][x], height_map[z+1][x+1], merge_threshold)
+			color_helper.chunk = self
+			color_helper.cell = cell
+			
 			var work_load := func():
 				cell.generate_geometry(cell_coords)
 				if grass_planter and grass_planter.terrain_system:
