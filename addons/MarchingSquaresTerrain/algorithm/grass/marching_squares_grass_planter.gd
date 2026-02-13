@@ -53,6 +53,8 @@ func regenerate_all_cells() -> void:
 	for z in range(terrain_system.dimensions.z-1):
 		for x in range(terrain_system.dimensions.x-1):
 			generate_grass_on_cell(Vector2i(x, z))
+	
+	multimesh.mesh.center_offset.y = multimesh.mesh.size.y / 2 # Stops floating grass bug on startup
 
 
 func generate_grass_on_cell(cell_coords: Vector2i) -> void:
@@ -143,8 +145,8 @@ func generate_grass_on_cell(cell_coords: Vector2i) -> void:
 				var uv = uvs[i]*u + uvs[i+1]*v + uvs[i+2]*(1-u-v)
 				var on_ledge_or_ridge: bool = uv.y > 0.0 or uv.x > 0.5
 				
-				var color_0 = _chunk.get_dominant_color(colors_0[i]*u + colors_0[i+1]*v + colors_0[i+2]*(1-u-v))
-				var color_1 = _chunk.get_dominant_color(colors_1[i]*u + colors_1[i+1]*v + colors_1[i+2]*(1-u-v))
+				var color_0 = MarchingSquaresTerrainVertexColorHelper.get_dominant_color(colors_0[i]*u + colors_0[i+1]*v + colors_0[i+2]*(1-u-v))
+				var color_1 = MarchingSquaresTerrainVertexColorHelper.get_dominant_color(colors_1[i]*u + colors_1[i+1]*v + colors_1[i+2]*(1-u-v))
 				
 				# Check grass mask first - green channel forces grass ON, red channel masks grass OFF
 				var mask = grass_mask[i]*u + grass_mask[i+1]*v + grass_mask[i+2]*(1-u-v)
@@ -318,6 +320,6 @@ func _create_grass_instance(index: int, position: Vector3, a: Vector3, b: Vector
 
 ## Hides a grass instance by setting it to zero scale at a far position
 func _hide_grass_instance(index: int) -> void:
-	multimesh.set_instance_transform(index, Transform3D(Basis.from_scale(Vector3.ZERO), Vector3(9999, 9999, 9999)))
+	multimesh.set_instance_transform(index, Transform3D(Basis.from_scale(Vector3.ZERO), Vector3.ZERO))
 
 #endregion

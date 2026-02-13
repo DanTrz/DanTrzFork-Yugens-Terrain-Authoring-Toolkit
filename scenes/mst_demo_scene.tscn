@@ -70,8 +70,9 @@ metadata/_custom_type_script = "uid://dqeuj3gddfm65"
 [sub_resource type="Resource" id="Resource_658wv"]
 script = ExtResource("6_h78w1")
 terrain_textures = Array[Texture2D]([ExtResource("7_bvinl"), ExtResource("7_bvinl"), ExtResource("7_bvinl"), ExtResource("7_bvinl"), ExtResource("7_bvinl"), ExtResource("8_7mabo"), SubResource("Texture2D_vynns"), SubResource("Texture2D_p1dug"), SubResource("Texture2D_38l2j"), SubResource("Texture2D_ta716"), SubResource("Texture2D_1nue7"), SubResource("Texture2D_iuhot"), SubResource("Texture2D_vk8tc"), SubResource("Texture2D_11ep3"), SubResource("Texture2D_fpfsv")])
+texture_scales = Array[float]([1.0, 1.0, 1.0, 1.0, 0.9, 1.0, 0.9, 0.9, 0.9, 0.9, 1.0, 1.0, 0.7, 1.0, 1.0])
 
-[sub_resource type="Resource" id="Resource_dgrna"]
+[sub_resource type="Resource" id="Resource_j2hbo"]
 script = ExtResource("10_52i7q")
 preset_name = "Empty Project"
 new_tex_names = SubResource("Resource_38l2j")
@@ -107,18 +108,17 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0, 32)
 script = ExtResource("1_0xhur")
 
 [node name="Camera3D" type="Camera3D" parent="SubViewportContainer/SubViewport/CameraPivot" unique_id=1065357724]
-transform = Transform3D(0.70710677, 0.35355338, -0.6123724, 0, 0.8660254, 0.5, 0.70710677, -0.35355338, 0.6123724, -80.03439, 65.34781, 80.03439)
+transform = Transform3D(0.70710677, 0.35355338, -0.6123724, 0, 0.8660254, 0.5, 0.70710677, -0.35355338, 0.6123724, -44.251278, 36.13102, 44.251278)
 projection = 1
 size = 55.0
 near = 0.003
 far = 1200.0
 
-[node name="MarchingSquaresTerrain" type="Node3D" parent="SubViewportContainer/SubViewport" unique_id=216699866]
+[node name="MarchingSquaresTerrain" type="Node3D" parent="SubViewportContainer/SubViewport" unique_id=424027971]
 script = ExtResource("3_0450b")
-data_directory = "res://scenes/mst_demo_scene_TerrainData/MarchingSquaresTerrain_30836e0d/"
-_terrain_uid = "30836e0d"
+data_directory = "res://scenes/mst_demo_scene_TerrainData/MarchingSquaresTerrain_49ea0a73/"
+_terrain_uid = "49ea0a73"
 _storage_initialized = true
-blend_mode = 2
 texture_7 = SubResource("Texture2D_vynns")
 texture_8 = SubResource("Texture2D_p1dug")
 texture_9 = SubResource("Texture2D_38l2j")
@@ -128,13 +128,19 @@ texture_12 = SubResource("Texture2D_iuhot")
 texture_13 = SubResource("Texture2D_vk8tc")
 texture_14 = SubResource("Texture2D_11ep3")
 texture_15 = SubResource("Texture2D_fpfsv")
-current_texture_preset = SubResource("Resource_dgrna")
+texture_scale_5 = 0.9
+texture_scale_7 = 0.9
+texture_scale_8 = 0.9
+texture_scale_9 = 0.9
+texture_scale_10 = 0.9
+texture_scale_13 = 0.7
+current_texture_preset = SubResource("Resource_j2hbo")
 metadata/_custom_type_script = "uid://cddg1xr5hye1d"
 
-[node name="Chunk (0, 0)" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/MarchingSquaresTerrain" unique_id=1845063982 node_paths=PackedStringArray("terrain_system")]
+[node name="Chunk (0, 0)" type="MeshInstance3D" parent="SubViewportContainer/SubViewport/MarchingSquaresTerrain" unique_id=584245953 node_paths=PackedStringArray("terrain_system")]
 script = ExtResource("4_0xhur")
 terrain_system = NodePath("..")
 
-[node name="GrassPlanter" type="MultiMeshInstance3D" parent="SubViewportContainer/SubViewport/MarchingSquaresTerrain/Chunk (0, 0)" unique_id=390078973]
+[node name="GrassPlanter" type="MultiMeshInstance3D" parent="SubViewportContainer/SubViewport/MarchingSquaresTerrain/Chunk (0, 0)" unique_id=997376342]
 cast_shadow = 0
 script = ExtResource("5_rcx4y")
