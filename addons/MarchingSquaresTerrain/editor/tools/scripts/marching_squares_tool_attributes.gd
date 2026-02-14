@@ -27,11 +27,12 @@ var terrain_settings_data : Dictionary = {
 	"blend_mode": "OptionButton",
 	"noise_hmap": "EditorResourcePicker",
 	"default_wall_texture": "OptionButton",
+	"extra_collision_layer": "OptionButton",
 	# Grass settings
 	"animation_fps": "SpinBox",
 	"grass_subdivisions": "SpinBox",
 	"grass_size": "Vector2",
-	"extra_collision_layer": "OptionButton",
+	# Special texture settings
 	"use_ridge_texture": "CheckBox",
 	"use_ledge_texture": "CheckBox",
 	"ridge_threshold": "EditorSpinSlider",

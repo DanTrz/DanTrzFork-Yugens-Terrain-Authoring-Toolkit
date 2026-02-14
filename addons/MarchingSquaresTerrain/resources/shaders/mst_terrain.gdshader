@@ -86,13 +86,13 @@ group_uniforms;
 
 // Shared varyings
 varying vec3 vertex_normal;
-varying vec4 custom1;
+varying vec3 custom1;
+varying flat float nearest_wall_color_idx;
 varying vec3 world_pos;
 
 // Ridge & Ledge varyings for noise texture calculations
 varying vec4 ridge_blend_factor;
 varying vec4 ledge_blend_factor;
-varying flat vec4 custom3; // Holds the wall texture index info in the r channel
 
 // Hard edges mode: flat material index (no interpolation)
 varying flat int material_index;
@@ -309,8 +309,8 @@ float get_world_noise(vec3 world_position, float tile_size) {
 
 void vertex() {
 	vertex_normal = NORMAL;
-	custom1 = CUSTOM1;
-	custom3 = CUSTOM3;
+	custom1 = CUSTOM1.rgb;
+	nearest_wall_color_idx = CUSTOM1.a;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 
 	// Calculate ridge and ledge blend factors
@@ -490,8 +490,8 @@ void fragment() {
 			float noise_variation = (blend_noise - 0.5) * rl_noise_strength;
 			mixed_blend_factor = step(ledge_threshold + noise_variation, max(UV.x, UV.y));
 		}
-		vec3 rl_wall_color_x = sample_material_by_index(int(custom3.r), (vertex_pos.zy / cell_size.yx) * tiling_factor_wall).rgb * tri_weights.x;
-		vec3 rl_wall_color_z = sample_material_by_index(int(custom3.r), (vertex_pos.xy / cell_size) * tiling_factor_wall).rgb * tri_weights.z;
+		vec3 rl_wall_color_x = sample_material_by_index(int(nearest_wall_color_idx), (vertex_pos.zy / cell_size.yx) * tiling_factor_wall).rgb * tri_weights.x;
+		vec3 rl_wall_color_z = sample_material_by_index(int(nearest_wall_color_idx), (vertex_pos.xy / cell_size) * tiling_factor_wall).rgb * tri_weights.z;
 		mixed_triplanar_color = mix(floor_color.rgb, rl_wall_color_x + rl_wall_color_z, mixed_blend_factor);
 		ALBEDO = mixed_triplanar_color;
 	}
@@ -501,8 +501,8 @@ void fragment() {
 			float noise_variation = (blend_noise - 0.5) * rl_noise_strength;
 			mixed_blend_factor = step(ridge_threshold + noise_variation, max(UV.x, UV.y));
 		}
-		vec3 rl_wall_color_x = sample_material_by_index(int(custom3.r), (vertex_pos.zy / cell_size.yx) * tiling_factor_wall).rgb * tri_weights.x;
-		vec3 rl_wall_color_z = sample_material_by_index(int(custom3.r), (vertex_pos.xy / cell_size) * tiling_factor_wall).rgb * tri_weights.z;
+		vec3 rl_wall_color_x = sample_material_by_index(int(nearest_wall_color_idx), (vertex_pos.zy / cell_size.yx) * tiling_factor_wall).rgb * tri_weights.x;
+		vec3 rl_wall_color_z = sample_material_by_index(int(nearest_wall_color_idx), (vertex_pos.xy / cell_size) * tiling_factor_wall).rgb * tri_weights.z;
 		mixed_triplanar_color = mix(floor_color.rgb, rl_wall_color_x + rl_wall_color_z, mixed_blend_factor);
 		ALBEDO = mixed_triplanar_color;
 	}

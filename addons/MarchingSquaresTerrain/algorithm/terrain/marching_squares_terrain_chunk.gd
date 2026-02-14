@@ -287,22 +287,20 @@ func generate_terrain_cells(use_threads: bool):
 					var verts = cell_geometry[cell_coords]["verts"]
 					var uvs = cell_geometry[cell_coords]["uvs"]
 					var uv2s = cell_geometry[cell_coords]["uv2s"]
-					var colors_0 = cell_geometry[cell_coords]["colors_0"]
-					var colors_1 = cell_geometry[cell_coords]["colors_1"]
-					var grass_mask = cell_geometry[cell_coords]["grass_mask"]
+					var color_0s = cell_geometry[cell_coords]["color_0s"]
+					var color_1s = cell_geometry[cell_coords]["color_1s"]
+					var custom_1_values = cell_geometry[cell_coords]["custom_1_values"]
 					var mat_blend = cell_geometry[cell_coords]["mat_blend"]
 					var is_floor = cell_geometry[cell_coords]["is_floor"]
-					var rl_color = cell_geometry[cell_coords]["rl_color"]
 					
 					for i in range(len(verts)):
 						st.set_smooth_group(0 if is_floor[i] == true else -1)
 						st.set_uv(uvs[i])
 						st.set_uv2(uv2s[i])
-						st.set_color(colors_0[i])
-						st.set_custom(0, colors_1[i])
-						st.set_custom(1, grass_mask[i])
+						st.set_color(color_0s[i])
+						st.set_custom(0, color_1s[i])
+						st.set_custom(1, custom_1_values[i])
 						st.set_custom(2, mat_blend[i])
-						st.set_custom(3, rl_color[i])
 						st.add_vertex(verts[i])
 					cell_generation_mutex.unlock()
 				if use_threads:
@@ -320,12 +318,11 @@ func generate_terrain_cells(use_threads: bool):
 				"verts": PackedVector3Array(),
 				"uvs": PackedVector2Array(),
 				"uv2s": PackedVector2Array(),
-				"colors_0": PackedColorArray(),
-				"colors_1": PackedColorArray(),
-				"grass_mask": PackedColorArray(),
+				"color_0s": PackedColorArray(),
+				"color_1s": PackedColorArray(),
+				"custom_1_values": PackedColorArray(),
 				"mat_blend": PackedColorArray(),
 				"is_floor": [],
-				"rl_color": PackedColorArray(),
 			}
 			
 			var color_helper := MarchingSquaresTerrainVertexColorHelper.new()
@@ -354,20 +351,18 @@ func add_polygons(
 	uv2s : Array[Vector2],
 	color_0s : Array[Color],
 	color_1s : Array[Color],
-	g_masks : Array[Color],
+	custom_1_values : Array[Color],
 	mat_blends : Array[Color],
 	floors : Array[bool],
-	rl_colors : Array[Color]
 	):
 		assert(pts.size() % 3 == 0)
 		assert(pts.size() == uvs.size())
 		assert(pts.size() == uv2s.size())
 		assert(pts.size() == color_0s.size())
 		assert(pts.size() == color_1s.size())
-		assert(pts.size() == g_masks.size())
+		assert(pts.size() == custom_1_values.size())
 		assert(pts.size() == mat_blends.size())
 		assert(pts.size() == floors.size())
-		assert(pts.size() == rl_colors.size())
 		
 		cell_generation_mutex.lock()
 		for i in range(pts.size()):
@@ -375,18 +370,17 @@ func add_polygons(
 				_start_wall()
 			elif not floor_mode and floors[i]:
 				_start_floor()
-			_add_point(cell_coords, pts[i], uvs[i], uv2s[i], color_0s[i], color_1s[i], g_masks[i], mat_blends[i], floors[i], rl_colors[i])
+			_add_point(cell_coords, pts[i], uvs[i], uv2s[i], color_0s[i], color_1s[i], custom_1_values[i], mat_blends[i], floors[i])
 		cell_generation_mutex.unlock()
 
 
 # Adds a point. Coordinates are relative to the top-left corner (not mesh origin relative)
 # UV.x is closeness to the bottom of an edge. UV.Y is closeness to the edge of a cliff
-func _add_point(cell_coords: Vector2i, vert: Vector3, uv: Vector2, uv2: Vector2, color_0: Color, color_1: Color, g_mask: Color, mat_blend, is_floor: bool, rl_color: Color):
+func _add_point(cell_coords: Vector2i, vert: Vector3, uv: Vector2, uv2: Vector2, color_0: Color, color_1: Color, custom_1_value: Color, mat_blend, is_floor: bool):
 	st.set_color(color_0)
 	st.set_custom(0, color_1)
-	st.set_custom(1, g_mask)
+	st.set_custom(1, custom_1_value)
 	st.set_custom(2, mat_blend)
-	st.set_custom(3, rl_color)
 	st.set_uv(uv)
 	st.set_uv2(uv2)
 	st.add_vertex(vert)
@@ -394,12 +388,11 @@ func _add_point(cell_coords: Vector2i, vert: Vector3, uv: Vector2, uv2: Vector2,
 	cell_geometry[cell_coords]["verts"].append(vert)
 	cell_geometry[cell_coords]["uvs"].append(uv)
 	cell_geometry[cell_coords]["uv2s"].append(uv2)
-	cell_geometry[cell_coords]["colors_0"].append(color_0)
-	cell_geometry[cell_coords]["colors_1"].append(color_1)
-	cell_geometry[cell_coords]["grass_mask"].append(g_mask)
+	cell_geometry[cell_coords]["color_0s"].append(color_0)
+	cell_geometry[cell_coords]["color_1s"].append(color_1)
+	cell_geometry[cell_coords]["custom_1_values"].append(custom_1_value)
 	cell_geometry[cell_coords]["mat_blend"].append(mat_blend)
 	cell_geometry[cell_coords]["is_floor"].append(floor_mode)
-	cell_geometry[cell_coords]["rl_color"].append(rl_color)
 
 # If true, currently making floor geometry. if false, currently making wall geometry.
 var floor_mode : bool = true
