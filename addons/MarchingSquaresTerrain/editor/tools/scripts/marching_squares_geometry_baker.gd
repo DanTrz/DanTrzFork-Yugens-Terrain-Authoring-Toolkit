@@ -2,12 +2,13 @@
 extends Node
 class_name MarchingSquaresGeometryBaker
 
+
 signal finished(mesh: Mesh, original: MeshInstance3D, img: Image)
-const TRIS_PER_ROW := 128
-const atlas_res := 2048
+@export var TRIS_PER_ROW := 128
+@export var atlas_res := 2048
 	
 func bake_geometry_texture(inst: MeshInstance3D, scene_tree: SceneTree) -> void:
-	if not inst or not inst.mesh is ArrayMesh:
+	if not inst or not scene_tree or not inst.mesh is ArrayMesh:
 		return
 	var mesh: ArrayMesh = inst.mesh
 	var new_mesh = ArrayMesh.new()
@@ -39,8 +40,10 @@ func bake_geometry_texture(inst: MeshInstance3D, scene_tree: SceneTree) -> void:
 	var bake_c1 := PackedColorArray()
 	var bake_c2 := PackedColorArray()
 	
+	var outset_verts := PackedVector3Array()
+	
 	var tri_id := 0
-	const cell_size := TRIS_PER_ROW / 2
+	var cell_size := TRIS_PER_ROW / 2
 	
 	for i in range(0, indices.size(), 3):
 		var idx0 = indices[i]
@@ -70,9 +73,16 @@ func bake_geometry_texture(inst: MeshInstance3D, scene_tree: SceneTree) -> void:
 		new_verts.append(verts[idx1])
 		new_verts.append(verts[idx2])
 		
-		new_uvs.append(v0)
-		new_uvs.append(v1)
-		new_uvs.append(v2)
+		# calculate inset triangle to prevent texture bleeding
+		const scale := 0.875 # determines the distance of triangles, the band is 16*(1-scale) -> 2px
+		var center := Vector2( (v0.x + v1.x + v2.x)/3.0, (v0.y + v1.y + v2.y)/3.0 )
+		var vi0 := center + scale*(v0-center)
+		var vi1 := center + scale*(v1-center)
+		var vi2 := center + scale*(v2-center)
+		
+		new_uvs.append(vi0)
+		new_uvs.append(vi1)
+		new_uvs.append(vi2)
 		
 		orig_verts.append(verts[idx0])
 		orig_verts.append(verts[idx1])
@@ -86,9 +96,13 @@ func bake_geometry_texture(inst: MeshInstance3D, scene_tree: SceneTree) -> void:
 		bake_normals.append(normals[idx1])
 		bake_normals.append(normals[idx2])
 			
-		bake_verts.append(Vector3(v0.x, v0.y, 0))
-		bake_verts.append(Vector3(v1.x, v1.y, 0))
-		bake_verts.append(Vector3(v2.x, v2.y, 0))
+		bake_verts.append(Vector3(vi0.x, vi0.y, 0))
+		bake_verts.append(Vector3(vi1.x, vi1.y, 0))
+		bake_verts.append(Vector3(vi2.x, vi2.y, 0))
+		
+		outset_verts.append(Vector3(v0.x, v0.y, 0))
+		outset_verts.append(Vector3(v1.x, v1.y, 0))
+		outset_verts.append(Vector3(v2.x, v2.y, 0))
 		
 		bake_uv2s.append(uv2s[idx0])
 		bake_uv2s.append(uv2s[idx1])
@@ -115,6 +129,54 @@ func bake_geometry_texture(inst: MeshInstance3D, scene_tree: SceneTree) -> void:
 		bake_indices.append(i + 2)
 		
 		tri_id += 1
+		
+	var new_arrays = []
+	new_arrays.resize(Mesh.ARRAY_MAX)
+	
+	new_arrays[Mesh.ARRAY_INDEX] = bake_indices
+	new_arrays[Mesh.ARRAY_VERTEX] = new_verts
+	new_arrays[Mesh.ARRAY_TEX_UV] = new_uvs
+	new_arrays[Mesh.ARRAY_NORMAL] = bake_normals
+	
+	new_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, new_arrays, [], {}, Mesh.ARRAY_FORMAT_NORMAL | Mesh.ARRAY_FORMAT_VERTEX | Mesh.ARRAY_FORMAT_TEX_UV | Mesh.ARRAY_FORMAT_COLOR)
+
+	# at this point we have the inset triangles, they will contain the actual color data
+	# to prevent texture bleeding when we bake the texture we add a quad on each of their 
+	# sides to serve as a border the colors and UVs match those of the rims of the triangle
+	var s := bake_indices.size()
+	for i in range(0,s,3):
+		bake_indices.append(i)
+		bake_indices.append(i+1+s)
+		bake_indices.append(i+1)
+		bake_indices.append(i)
+		bake_indices.append(i+s)
+		bake_indices.append(i+1+s)
+		
+		bake_indices.append(i+1)
+		bake_indices.append(i+2+s)
+		bake_indices.append(i+2)
+		bake_indices.append(i+1)
+		bake_indices.append(i+1+s)
+		bake_indices.append(i+2+s)
+		
+		bake_indices.append(i)
+		bake_indices.append(i+2)
+		bake_indices.append(i+2+s)
+		bake_indices.append(i)
+		bake_indices.append(i+2+s)
+		bake_indices.append(i+s)
+	
+	bake_verts.append_array(outset_verts)
+	bake_uvs.append_array(bake_uvs)
+	bake_uv2s.append_array(bake_uv2s)
+	bake_normals.append_array(bake_normals)
+	bake_cols.append_array(bake_cols)
+	bake_c0.append_array(bake_c0)
+	bake_c1.append_array(bake_c1)
+	bake_c2.append_array(bake_c2)
+	var bake_c3 := _pack_verts_to_float_array(orig_verts)
+	bake_c3.append_array(bake_c3)
+	
 	
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(atlas_res, atlas_res)
@@ -137,14 +199,14 @@ func bake_geometry_texture(inst: MeshInstance3D, scene_tree: SceneTree) -> void:
 	bake_arrays.resize(Mesh.ARRAY_MAX)
 	bake_arrays[Mesh.ARRAY_INDEX] = bake_indices
 	bake_arrays[Mesh.ARRAY_VERTEX] = bake_verts
+	bake_arrays[Mesh.ARRAY_TEX_UV] = bake_uvs
+	bake_arrays[Mesh.ARRAY_TEX_UV2] = bake_uv2s
 	bake_arrays[Mesh.ARRAY_NORMAL] = bake_normals
 	bake_arrays[Mesh.ARRAY_COLOR] = bake_cols
 	bake_arrays[Mesh.ARRAY_CUSTOM0] = _color_to_float_array(bake_c0)
 	bake_arrays[Mesh.ARRAY_CUSTOM1] = _color_to_float_array(bake_c1)
 	bake_arrays[Mesh.ARRAY_CUSTOM2] = _color_to_float_array(bake_c2)
-	bake_arrays[Mesh.ARRAY_CUSTOM3] = _pack_verts_to_float_array(orig_verts)
-	bake_arrays[Mesh.ARRAY_TEX_UV] = bake_uvs
-	bake_arrays[Mesh.ARRAY_TEX_UV2] = bake_uv2s
+	bake_arrays[Mesh.ARRAY_CUSTOM3] = bake_c3
 	
 	bake_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, bake_arrays, [], {}, 
 		mesh.surface_get_format(0) 
@@ -162,16 +224,6 @@ func bake_geometry_texture(inst: MeshInstance3D, scene_tree: SceneTree) -> void:
 	
 	await scene_tree.process_frame
 	await scene_tree.process_frame
-	
-	var new_arrays = []
-	new_arrays.resize(Mesh.ARRAY_MAX)
-	
-	new_arrays[Mesh.ARRAY_INDEX] = bake_indices
-	new_arrays[Mesh.ARRAY_VERTEX] = new_verts
-	new_arrays[Mesh.ARRAY_TEX_UV] = new_uvs
-	new_arrays[Mesh.ARRAY_NORMAL] = bake_normals
-	
-	new_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, new_arrays, [], {}, Mesh.ARRAY_FORMAT_NORMAL | Mesh.ARRAY_FORMAT_VERTEX | Mesh.ARRAY_FORMAT_TEX_UV | Mesh.ARRAY_FORMAT_COLOR)
 
 	var img := viewport.get_texture().get_image()
 
