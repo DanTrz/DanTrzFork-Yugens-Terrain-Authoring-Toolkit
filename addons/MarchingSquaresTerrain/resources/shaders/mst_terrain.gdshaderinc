@@ -1,6 +1,3 @@
-shader_type spatial;
-render_mode diffuse_toon, depth_draw_opaque, alpha_to_coverage, cull_disabled;
-
 group_uniforms Terrain.Properties;
 uniform ivec3 chunk_size = ivec3(33, 32, 33);
 uniform vec2 cell_size = vec2(2.0, 2.0);
@@ -89,6 +86,9 @@ varying vec3 vertex_normal;
 varying vec3 custom1;
 varying flat float nearest_wall_color_idx;
 varying vec3 world_pos;
+#ifdef BAKE_MODE
+varying vec3 virtual_vertex;
+#endif
 
 // Ridge & Ledge varyings for noise texture calculations
 varying vec4 ridge_blend_factor;
@@ -311,8 +311,12 @@ void vertex() {
 	vertex_normal = NORMAL;
 	custom1 = CUSTOM1.rgb;
 	nearest_wall_color_idx = CUSTOM1.a;
+#ifndef BAKE_MODE
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-
+#else
+	virtual_vertex = CUSTOM3.xyz;
+	world_pos = (MODEL_MATRIX * vec4(virtual_vertex, 1.0)).xyz;
+#endif
 	// Calculate ridge and ledge blend factors
 	vec2 rl_uv = UV;
 	float rl_factor = max(rl_uv.x, rl_uv.y);
@@ -340,12 +344,17 @@ void vertex() {
 
 void fragment() {
 	ALPHA_SCISSOR_THRESHOLD = 0.5;
+#ifndef BAKE_MODE
 	vec4 vertex_pos = INV_VIEW_MATRIX * vec4(VERTEX, 1.0);
+	vec3 v = VERTEX;
+#else
+	vec4 vertex_pos = INV_VIEW_MATRIX * vec4(virtual_vertex, 1.0);
+#endif
 
 	vec2 tiling_factor_floor = vec2(1.0 / float(chunk_size.x), 1.0 / float(chunk_size.z));
 	vec2 tiling_factor_wall = vec2(1.0 / float(chunk_size.x), 1.0 / float(chunk_size.y));
 	bool is_floor = dot(vertex_normal, vec3(0.0, 1.0, 0.0)) > wall_threshold;
-
+	
 	// Usd for wall/ridge/ledge calculations
 	vec3 abs_normal = abs(vertex_normal);
 	vec3 tri_weights = vec3(abs_normal.x, 0.0, abs_normal.z);

@@ -219,8 +219,7 @@ func regenerate_mesh(use_threads: bool = false):
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
 	st.set_custom_format(1, SurfaceTool.CUSTOM_RGBA_FLOAT)
-	st.set_custom_format(2, SurfaceTool.CUSTOM_RGBA_FLOAT)  
-	st.set_custom_format(3, SurfaceTool.CUSTOM_R_FLOAT)
+	st.set_custom_format(2, SurfaceTool.CUSTOM_RGBA_FLOAT)
 	
 	var start_time: int = Time.get_ticks_msec()
 	
@@ -267,7 +266,18 @@ func regenerate_mesh(use_threads: bool = false):
 	
 	var elapsed_time: int = Time.get_ticks_msec() - start_time
 	print_verbose("Generated terrain in "+str(elapsed_time)+"ms")
-
+	
+	if not Engine.is_editor_hint():
+		var baker = MarchingSquaresGeometryBaker.new()
+		baker.finished.connect(func(mesh_: Mesh, original: MeshInstance3D, img: Image):
+			mesh = mesh_
+			var mat := StandardMaterial3D.new()
+			mat.albedo_texture = ImageTexture.create_from_image(img)
+			mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+			mat.specular_mode = BaseMaterial3D.SPECULAR_TOON
+			mesh.surface_set_material(0, mat)
+		)
+		baker.bake_geometry_texture(self, get_tree())
 
 func generate_terrain_cells(use_threads: bool):
 	if not cell_geometry:
@@ -376,7 +386,7 @@ func add_polygons(
 
 # Adds a point. Coordinates are relative to the top-left corner (not mesh origin relative)
 # UV.x is closeness to the bottom of an edge. UV.Y is closeness to the edge of a cliff
-func _add_point(cell_coords: Vector2i, vert: Vector3, uv: Vector2, uv2: Vector2, color_0: Color, color_1: Color, custom_1_value: Color, mat_blend, is_floor: bool):
+func _add_point(cell_coords: Vector2i, vert: Vector3, uv: Vector2, uv2: Vector2, color_0: Color, color_1: Color, custom_1_value: Color, mat_blend: Color, is_floor: bool):
 	st.set_color(color_0)
 	st.set_custom(0, color_1)
 	st.set_custom(1, custom_1_value)
