@@ -490,8 +490,8 @@ void fragment() {
 			float noise_variation = (blend_noise - 0.5) * rl_noise_strength;
 			mixed_blend_factor = step(ledge_threshold + noise_variation, max(UV.x, UV.y));
 		}
-		vec3 rl_wall_color_x = sample_material_by_index(int(nearest_wall_color_idx), (vertex_pos.zy / cell_size.yx) * tiling_factor_wall).rgb * tri_weights.x;
-		vec3 rl_wall_color_z = sample_material_by_index(int(nearest_wall_color_idx), (vertex_pos.xy / cell_size) * tiling_factor_wall).rgb * tri_weights.z;
+		vec3 rl_wall_color_x = sample_material_by_index(int(nearest_wall_color_idx), (UV2) * tiling_factor_wall).rgb * tri_weights.x;
+		vec3 rl_wall_color_z = sample_material_by_index(int(nearest_wall_color_idx), (UV2) * tiling_factor_wall).rgb * tri_weights.z;
 		mixed_triplanar_color = mix(floor_color.rgb, rl_wall_color_x + rl_wall_color_z, mixed_blend_factor);
 		ALBEDO = mixed_triplanar_color;
 	}
@@ -501,8 +501,8 @@ void fragment() {
 			float noise_variation = (blend_noise - 0.5) * rl_noise_strength;
 			mixed_blend_factor = step(ridge_threshold + noise_variation, max(UV.x, UV.y));
 		}
-		vec3 rl_wall_color_x = sample_material_by_index(int(nearest_wall_color_idx), (vertex_pos.zy / cell_size.yx) * tiling_factor_wall).rgb * tri_weights.x;
-		vec3 rl_wall_color_z = sample_material_by_index(int(nearest_wall_color_idx), (vertex_pos.xy / cell_size) * tiling_factor_wall).rgb * tri_weights.z;
+		vec3 rl_wall_color_x = sample_material_by_index(int(nearest_wall_color_idx), (UV2) * tiling_factor_wall).rgb * tri_weights.x;
+		vec3 rl_wall_color_z = sample_material_by_index(int(nearest_wall_color_idx), (UV2) * tiling_factor_wall).rgb * tri_weights.z;
 		mixed_triplanar_color = mix(floor_color.rgb, rl_wall_color_x + rl_wall_color_z, mixed_blend_factor);
 		ALBEDO = mixed_triplanar_color;
 	}
