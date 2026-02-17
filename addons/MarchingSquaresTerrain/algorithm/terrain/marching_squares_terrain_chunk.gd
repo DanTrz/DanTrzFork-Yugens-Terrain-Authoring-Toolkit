@@ -267,12 +267,14 @@ func regenerate_mesh(use_threads: bool = false):
 	var elapsed_time: int = Time.get_ticks_msec() - start_time
 	print_verbose("Generated terrain in "+str(elapsed_time)+"ms")
 	
-	if not Engine.is_editor_hint():
+	if not Engine.is_editor_hint() and terrain_system.enable_runtime_texture_baking:
 		var baker = MarchingSquaresGeometryBaker.new()
+		baker.polygon_texture_resolution = terrain_system.polygon_texture_resolution
 		baker.finished.connect(func(mesh_: Mesh, original: MeshInstance3D, img: Image):
 			mesh = mesh_
 			var mat := StandardMaterial3D.new()
 			mat.albedo_texture = ImageTexture.create_from_image(img)
+			mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 			mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 			mat.specular_mode = BaseMaterial3D.SPECULAR_TOON
 			mesh.surface_set_material(0, mat)

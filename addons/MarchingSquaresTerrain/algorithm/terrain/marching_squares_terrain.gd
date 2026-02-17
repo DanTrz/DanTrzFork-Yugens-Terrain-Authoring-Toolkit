@@ -14,6 +14,7 @@ enum StorageMode {
 	RUNTIME,
 }
 
+@export_category("Storage Options")
 ## The storage mode for terrain data. 
 @export var storage_mode : StorageMode = StorageMode.BAKED:
 	set(value):
@@ -37,6 +38,17 @@ enum StorageMode {
 				notify_property_list_changed()
 				return
 		data_directory = value
+		
+@export_category("Runtime Baking")
+
+## If this option is true, the textures will be baked into a texture atlas
+## at runtime. This will improve rendering performance, but increase cost of generation
+## slightly
+@export var enable_runtime_texture_baking: bool = true
+
+## The resolution used per polygon when baking the texture atlas. Increase this value
+## when using high-res textures. Higher values increase the baking time and memory usage
+@export var polygon_texture_resolution: int = 32
 
 ## Unique identifier for this terrain instance (auto-generated on first save)
 ## Prevents path collisions when nodes are recreated with same name

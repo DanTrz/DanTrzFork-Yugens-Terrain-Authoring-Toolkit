@@ -4,8 +4,8 @@ class_name MarchingSquaresGeometryBaker
 
 
 signal finished(mesh: Mesh, original: MeshInstance3D, img: Image)
-@export var TRIS_PER_ROW := 128
-@export var atlas_res := 2048
+
+@export var polygon_texture_resolution := 32
 	
 func bake_geometry_texture(inst: MeshInstance3D, scene_tree: SceneTree) -> void:
 	if not inst or not scene_tree or not inst.mesh is ArrayMesh:
@@ -43,15 +43,27 @@ func bake_geometry_texture(inst: MeshInstance3D, scene_tree: SceneTree) -> void:
 	var outset_verts := PackedVector3Array()
 	
 	var tri_id := 0
-	var cell_size := TRIS_PER_ROW / 2
+	
+	var atlas_res := int(pow(2, ceil(log(polygon_texture_resolution) / log(2)))) # next power of two
+	var tris_per_row := atlas_res / polygon_texture_resolution * 2
+	
+	var num_of_triangles := indices.size()/3
+	var max_texture_size := RenderingServer.get_rendering_device().limit_get(RenderingDevice.LIMIT_MAX_TEXTURE_SIZE_2D)
+	while tris_per_row * tris_per_row/2 < num_of_triangles:
+		atlas_res *= 2
+		tris_per_row = atlas_res / polygon_texture_resolution * 2
+	if atlas_res > max_texture_size:
+		push_error("Unable to bake into atlas with polygon size of ", polygon_texture_resolution, "px: exceeds GPU texture size limits")
+		return
+	var quads_per_row := tris_per_row / 2
 	
 	for i in range(0, indices.size(), 3):
 		var idx0 = indices[i]
 		var idx1 = indices[i + 1]
 		var idx2 = indices[i + 2]
 
-		var row := tri_id / TRIS_PER_ROW
-		var col := (tri_id / 2) % (TRIS_PER_ROW / 2)
+		var row := tri_id / tris_per_row
+		var col := (tri_id / 2) % (tris_per_row / 2)
 
 		var base_vert := Vector2(col, row)
 
@@ -61,20 +73,20 @@ func bake_geometry_texture(inst: MeshInstance3D, scene_tree: SceneTree) -> void:
 
 		if tri_id % 2 == 0:
 			# Pack triangle into square cell
-			v0 = (base_vert + Vector2(0, 0)) / cell_size
-			v1 = (base_vert + Vector2(1, 0)) / cell_size
-			v2 = (base_vert + Vector2(0, 1)) / cell_size
+			v0 = (base_vert + Vector2(0, 0)) / quads_per_row
+			v1 = (base_vert + Vector2(1, 0)) / quads_per_row
+			v2 = (base_vert + Vector2(0, 1)) / quads_per_row
 		else:
-			v0 = (base_vert + Vector2(1, 0)) / cell_size
-			v1 = (base_vert + Vector2(1, 1)) / cell_size
-			v2 = (base_vert + Vector2(0, 1)) / cell_size
+			v0 = (base_vert + Vector2(1, 0)) / quads_per_row
+			v1 = (base_vert + Vector2(1, 1)) / quads_per_row
+			v2 = (base_vert + Vector2(0, 1)) / quads_per_row
 			
 		new_verts.append(verts[idx0])
 		new_verts.append(verts[idx1])
 		new_verts.append(verts[idx2])
 		
 		# calculate inset triangle to prevent texture bleeding
-		const scale := 0.875 # determines the distance of triangles, the band is 16*(1-scale) -> 2px
+		var scale := (polygon_texture_resolution - 4.0) / polygon_texture_resolution
 		var center := Vector2( (v0.x + v1.x + v2.x)/3.0, (v0.y + v1.y + v2.y)/3.0 )
 		var vi0 := center + scale*(v0-center)
 		var vi1 := center + scale*(v1-center)
