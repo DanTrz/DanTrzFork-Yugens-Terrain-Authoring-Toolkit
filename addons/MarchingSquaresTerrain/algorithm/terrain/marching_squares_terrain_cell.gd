@@ -1,10 +1,6 @@
 extends RefCounted
 class_name MarchingSquaresTerrainCell
 
-
-# < 1.0 = more aggressive wall detection 
-# > 1.0 = less aggressive / more slope blend
-const BLEND_EDGE_SENSITIVITY : float = 1.25
 const higher_poly_floors : bool = true
 
 enum CellRotation {DEG0 = 0, DEG270 = 3, DEG180 = 2, DEG90 = 1}

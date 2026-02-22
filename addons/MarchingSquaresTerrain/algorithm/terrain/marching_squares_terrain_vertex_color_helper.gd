@@ -3,7 +3,7 @@ class_name MarchingSquaresTerrainVertexColorHelper
 
 # < 1.0 = more aggressive wall detection 
 # > 1.0 = less aggressive / more slope blend
-const BLEND_EDGE_SENSITIVITY : float = 1.25
+const BLEND_EDGE_SENSITIVITY : float = 1.5
 
 # Cell height range for boundary detection (height-based color sampling)
 var cell_min_height : float
@@ -75,11 +75,8 @@ func blend_colors(vertex: Vector3, uv: Vector2, diag_midpoint: bool = false) -> 
 	c_1_val.a = rl_color
 	colors["custom_1_value"] = c_1_val
 	
-	# Use edge connection to determine blending path
-	# Avoid issues on weird Cliffs vs Slopes blending giving each a different path
-	var mat_blend : Color = calculate_material_blend_data(vertex.x, vertex.z, source_map_0, source_map_1)
-	if cell_has_walls_for_blend and cell.floor_mode:
-		mat_blend.a = 2.0 
+	# All floor cells use per-cell material indices with height-aware weights
+	var mat_blend : Color = calculate_material_blend_data(vertex.x, vertex.y, vertex.z, source_map_0, source_map_1)
 	colors["mat_blend"] = mat_blend
 	return colors
 
@@ -323,13 +320,13 @@ func calculate_cell_material_pair(source_map_0: PackedColorArray, source_map_1: 
 	cell_mat_c = sorted_textures[2] if sorted_textures.size() > 2 else cell_mat_b
 
 
-# Calculate CUSTOM2 blend data with 3 texture support 
+# Calculate CUSTOM2 blend data with 3 texture support and height-aware weights
 # Encoding: Color(packed_mats, mat_c/15, weight_a, weight_b)
 # R: (mat_a + mat_b * 16) / 255.0  (packs 2 indices, each 0-15)
 # G: mat_c / 15.0
 # B: weight_a (0.0 to 1.0)
-# A: weight_b (0.0 to 1.0), or 2.0 to signal use_vertex_colors
-func calculate_material_blend_data(vert_x: float, vert_z: float, source_map_0: PackedColorArray, source_map_1: PackedColorArray) -> Color:
+# A: weight_b (0.0 to 1.0)
+func calculate_material_blend_data(vert_x: float, vert_y: float, vert_z: float, source_map_0: PackedColorArray, source_map_1: PackedColorArray) -> Color:
 	var cell_coords := cell.cell_coords
 	var tex_a : int = get_texture_index_from_colors(
 		source_map_0[cell_coords.y * chunk.dimensions.x + cell_coords.x],
@@ -343,18 +340,33 @@ func calculate_material_blend_data(vert_x: float, vert_z: float, source_map_0: P
 	var tex_d : int = get_texture_index_from_colors(
 		source_map_0[(cell_coords.y + 1) * chunk.dimensions.x + cell_coords.x + 1],
 		source_map_1[(cell_coords.y + 1) * chunk.dimensions.x + cell_coords.x + 1])
-	
-	# Position weights for bilinear interpolation
-	var weight_a : float = (1.0 - vert_x) * (1.0 - vert_z)
-	var weight_b : float = vert_x * (1.0 - vert_z)
-	var weight_c : float = (1.0 - vert_x) * vert_z
-	var weight_d : float = vert_x * vert_z
-	
+
+	# Spatial weights (bilinear interpolation based on XZ position)
+	var spatial_a : float = (1.0 - vert_x) * (1.0 - vert_z)
+	var spatial_b : float = vert_x * (1.0 - vert_z)
+	var spatial_c : float = (1.0 - vert_x) * vert_z
+	var spatial_d : float = vert_x * vert_z
+
+	# Height proximity: reduces influence of corners at very different heights
+	# For flat cells (height_range ≈ 0): all hp ≈ 1.0, reduces to pure spatial
+	# For cliffs: corners far in height from vertex get low weight, preventing bleed
+	var height_range : float = maxf(cell_max_height - cell_min_height, 0.001)
+	var hp_a : float = 1.0 - clampf(absf(vert_y - cell._ay) / height_range, 0.0, 1.0)
+	var hp_b : float = 1.0 - clampf(absf(vert_y - cell._by) / height_range, 0.0, 1.0)
+	var hp_c : float = 1.0 - clampf(absf(vert_y - cell._cy) / height_range, 0.0, 1.0)
+	var hp_d : float = 1.0 - clampf(absf(vert_y - cell._dy) / height_range, 0.0, 1.0)
+
+	# Combined weights: spatial position * height proximity
+	var weight_a : float = spatial_a * hp_a
+	var weight_b : float = spatial_b * hp_b
+	var weight_c : float = spatial_c * hp_c
+	var weight_d : float = spatial_d * hp_d
+
 	# Accumulate weights for all 3 cell materials
 	var weight_mat_a : float = 0.0
 	var weight_mat_b : float = 0.0
 	var weight_mat_c : float = 0.0
-	
+
 	# Corner A
 	if tex_a == cell_mat_a: weight_mat_a += weight_a
 	elif tex_a == cell_mat_b: weight_mat_b += weight_a
@@ -371,16 +383,16 @@ func calculate_material_blend_data(vert_x: float, vert_z: float, source_map_0: P
 	if tex_d == cell_mat_a: weight_mat_a += weight_d
 	elif tex_d == cell_mat_b: weight_mat_b += weight_d
 	elif tex_d == cell_mat_c: weight_mat_c += weight_d
-	
+
 	# Normalize weights
 	var total_weight : float = weight_mat_a + weight_mat_b + weight_mat_c
 	if total_weight > 0.001:
 		weight_mat_a /= total_weight
 		weight_mat_b /= total_weight
-	
+
 	# Pack mat_a and mat_b into one channel (each is 0-15, so together 0-255)
 	var packed_mats : float = (float(cell_mat_a) + float(cell_mat_b) * 16.0) / 255.0
-	
+
 	return Color(packed_mats, float(cell_mat_c) / 15.0, weight_mat_a, weight_mat_b)
 
 #endregion

@@ -101,10 +101,9 @@ varying flat int material_index;
 varying vec4 vc_color_0;
 varying vec4 vc_color_1;
 
-// Phantom fix: Per-cell material indices (flat = no GPU interpolation, supports 3 textures)
+// Per-cell material indices (flat = no GPU interpolation, supports 3 textures)
 varying flat vec3 mat_indices; // mat_a, mat_b, mat_c (each /15)
 varying vec2 mat_weights; // (weight_a, weight_b) - interpolated for smooth blending
-varying float use_vertex_colors; // Flag: 1.0 = use vertex colors (boundary cells), 0.0 = use phantom fix
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -332,14 +331,13 @@ void vertex() {
 	vc_color_0 = COLOR;
 	vc_color_1 = CUSTOM0;
 
-	// CUSTOM2 contains per-cell material blend data for blend with 3-texture support
-	// Encoding: R=packed(mat_a,mat_b), G=mat_c/15, B=weight_a, A=weight_b (or A>=1.5 = use vertex colors)
+	// CUSTOM2 contains per-cell material blend data with 3-texture support
+	// Encoding: R=packed(mat_a,mat_b), G=mat_c/15, B=weight_a, A=weight_b
 	float packed_mats = CUSTOM2.r * 255.0;
 	mat_indices.x = mod(packed_mats, 16.0) / 15.0;  // mat_a (0-15 -> 0-1)
 	mat_indices.y = floor(packed_mats / 16.0) / 15.0;  // mat_b (0-15 -> 0-1)
 	mat_indices.z = CUSTOM2.g;  // mat_c (already /15)
 	mat_weights = vec2(CUSTOM2.b, CUSTOM2.a);  // weight_a, weight_b (interpolated for smooth blending)
-	use_vertex_colors = CUSTOM2.a >= 1.5 ? 1.0 : 0.0;  // A=2.0 signals vertex colors
 }
 
 void fragment() {
@@ -376,24 +374,7 @@ void fragment() {
 				floor_color = sample_material_by_index(cell_dominant_mat, floor_uv);
 			}
 		}
-		// Boundary cells: use vertex colors (respects height-adjusted colors, no cross-height bleeding)
-		else if (use_vertex_colors > 0.5) {
-			float weights[16];
-			float effective_sharpness = blend_sharpness;
-			if (blend_noise_strength > 0.0) {
-				float n = noise(world_pos.xz * blend_noise_scale);
-				effective_sharpness = mix(blend_sharpness, blend_sharpness * (0.5 + n), blend_noise_strength);
-			}
-			calculate_blend_weights(vc_color_0, vc_color_1, effective_sharpness, weights);
-
-			floor_color = vec4(0.0);
-			for (int i = 0; i < 16; i++) {
-				if (weights[i] > 0.01) {
-					floor_color += sample_material_by_index(i, floor_uv) * weights[i];
-				}
-			}
-		}
-		// Flat cells:using per-cell material indices with supports 3 textures
+		// All cells: per-cell material indices with height-aware weights (supports 3 textures)
 		else {
 			int mat_a = int(round(mat_indices.x * 15.0));
 			int mat_b = int(round(mat_indices.y * 15.0));
